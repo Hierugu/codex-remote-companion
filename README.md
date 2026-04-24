@@ -1,8 +1,8 @@
 # Codex Remote Companion
 
-Alpha local-first messenger bridge for using existing Codex App threads from Telegram.
+Control your local Codex App threads from Telegram while Codex continues running on your Mac.
 
-The companion runs on the user's machine, reads local Codex project/thread metadata, creates Telegram topic bindings, and forwards Telegram messages into the selected local Codex thread through `codex app-server`.
+Codex Remote Companion is an alpha local-first messenger bridge. It runs on the user's machine, reads local Codex project/thread metadata, creates Telegram topic bindings, and forwards Telegram messages into the selected local Codex thread through `codex app-server`.
 
 ## What It Does
 
