@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="bg" x1="160" x2="864" y1="128" y2="896" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#152B2D"/>
+      <stop offset="0.55" stop-color="#101516"/>
+      <stop offset="1" stop-color="#263726"/>
+    </linearGradient>
+    <linearGradient id="mark" x1="304" x2="720" y1="276" y2="748" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#F3F5F0"/>
+      <stop offset="1" stop-color="#BFD7C7"/>
+    </linearGradient>
+  </defs>
+  <rect width="1024" height="1024" rx="220" fill="url(#bg)"/>
+  <path
+    fill="none"
+    stroke="#3D6870"
+    stroke-width="32"
+    d="M256 176h512c44 0 80 36 80 80v512c0 44-36 80-80 80H256c-44 0-80-36-80-80V256c0-44 36-80 80-80Z"
+    opacity="0.85"
+  />
+  <path
+    fill="url(#mark)"
+    d="M322 324c0-42 34-76 76-76h228c42 0 76 34 76 76v376c0 42-34 76-76 76H398c-42 0-76-34-76-76V324Zm90 48v280c0 20 16 36 36 36h128c20 0 36-16 36-36V372c0-20-16-36-36-36H448c-20 0-36 16-36 36Zm62 70h76v76h-76v-76Zm0 126h76v76h-76v-76Z"
+  />
+  <circle cx="704" cy="704" r="76" fill="#F1B84B"/>
+</svg>

@@ -1,0 +1,57 @@
+{
+  "name": "codex-remote-companion",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Local-first messenger bridge into the same Codex environment.",
+  "author": "Codex Remote Companion contributors",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Wake0ne/codex-remote-companion.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Wake0ne/codex-remote-companion/issues"
+  },
+  "homepage": "https://github.com/Wake0ne/codex-remote-companion#readme",
+  "type": "module",
+  "main": "out/main/index.js",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "build:personal": "CRC_RELEASE_CHANNEL=personal electron-vite build",
+    "build:release": "CRC_RELEASE_CHANNEL=public electron-vite build",
+    "dist": "npm run dist:mac:release",
+    "dist:mac": "npm run dist:mac:release",
+    "dist:mac:personal": "npm run build:personal && electron-builder --config electron-builder.personal.yml --mac dmg zip",
+    "dist:mac:release": "npm run build:release && electron-builder --config electron-builder.release.yml --mac dmg zip",
+    "preview": "electron-vite preview",
+    "typecheck": "tsc --noEmit",
+    "test:phase1": "tsx --test src/main/runtime.test.ts",
+    "test:phase2": "tsx --test src/main/runtime.test.ts src/main/codex-store.test.ts",
+    "test:phase3": "tsx --test src/main/runtime.test.ts src/main/codex-store.test.ts src/main/control-plane.test.ts",
+    "test:phase4": "tsx --test src/main/runtime.test.ts src/main/codex-store.test.ts src/main/control-plane.test.ts src/main/backend-registry.test.ts",
+    "test:phase5": "tsx --test src/main/runtime.test.ts src/main/codex-store.test.ts src/main/control-plane.test.ts src/main/backend-registry.test.ts src/main/product-api.test.ts",
+    "test:phase6": "tsx --test src/main/runtime.test.ts src/main/codex-store.test.ts src/main/control-plane.test.ts src/main/backend-registry.test.ts src/main/product-api.test.ts src/main/telegram.test.ts src/main/telegram-poller.test.ts",
+    "test:ui": "tsx --test src/renderer/src/App.ui.test.tsx",
+    "smoke:phase2": "tsx src/main/phase2-smoke.ts",
+    "smoke:phase2-turn": "tsx src/main/phase2-turn-smoke.ts",
+    "smoke:phase2-existing-thread": "tsx src/main/phase2-existing-thread-smoke.ts",
+    "smoke:phase6-telegram": "tsx src/main/phase6-telegram-live-smoke.ts"
+  },
+  "dependencies": {
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@vitejs/plugin-react": "^4.4.0",
+    "electron": "^35.0.0",
+    "electron-builder": "^26.8.1",
+    "electron-vite": "^3.1.0",
+    "tsx": "^4.20.0",
+    "typescript": "^5.8.0",
+    "vite": "^6.3.0"
+  }
+}

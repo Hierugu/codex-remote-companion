@@ -1,0 +1,25 @@
+appId: com.wake0ne.codex-remote-companion
+productName: Codex Remote Companion
+artifactName: Codex-Remote-Companion-${version}-${arch}.${ext}
+asar: true
+
+directories:
+  buildResources: build
+  output: release/public
+
+files:
+  - out/**/*
+  - package.json
+
+mac:
+  category: public.app-category.developer-tools
+  icon: build/icon.png
+  identity: null
+  hardenedRuntime: false
+  gatekeeperAssess: false
+  target:
+    - dmg
+    - zip
+
+dmg:
+  artifactName: Codex-Remote-Companion-${version}-${arch}.${ext}
