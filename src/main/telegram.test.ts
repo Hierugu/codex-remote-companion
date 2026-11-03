@@ -17,6 +17,7 @@ import type {
   TelegramSendMessageInput,
   TelegramSendMessageResult
 } from './telegram-provider';
+import { HttpTelegramBotProvider } from './telegram-provider';
 import { TelegramService } from './telegram-service';
 
 class FakeTelegramBotProvider implements TelegramBotProvider {
@@ -438,6 +439,74 @@ test('TelegramService does not persist a new binding row when first setup fails'
   );
 
   assert.equal((await service.getConnectionState()).rows.length, 0);
+});
+
+test('TelegramService resumes a partially created group without duplicate topics or rows', async () => {
+  const tempRoot = await mkdtemp(join(tmpdir(), 'codex-remote-companion-phase6-'));
+  const backendRegistry = new PersistentBackendRegistry(join(tempRoot, 'backend-registry.json'));
+  const configStore = new TelegramConfigStore(join(tempRoot, 'telegram-config.json'));
+  let failOnce = true;
+  const provider = new (class extends FakeTelegramBotProvider {
+    override async createForumTopic(botToken: string, chatId: string, name: string) {
+      if (this.createdTopics.length === 1 && failOnce) {
+        failOnce = false;
+        throw new Error('Too Many Requests: retry after 40');
+      }
+      return super.createForumTopic(botToken, chatId, name);
+    }
+  })();
+  const service = new TelegramService(configStore, backendRegistry, provider);
+
+  await backendRegistry.ensureBootstrap({
+    installId: 'install-partial',
+    machineId: 'machine-partial',
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    source: 'local-companion-registry'
+  });
+  const project = await seedProjectThreads(backendRegistry, 2);
+  await service.setBotToken('123456:ABCDefghijklmnopqrstuvwxyz_1234', '12345');
+  const rowInput = {
+    forumGroupId: '-100405',
+    forumGroupTitle: 'Partial forum',
+    projectId: project.id
+  };
+
+  await assert.rejects(() => service.setupEnvironment(rowInput), /Too Many Requests/);
+  assert.equal((await service.getConnectionState()).rows.length, 1);
+  assert.equal((await backendRegistry.readState()).platformBindings.filter(
+    (binding) => binding.bindingType === 'thread-surface'
+  ).length, 1);
+
+  const result = await service.setupEnvironment(rowInput);
+  assert.equal(result.summary.created, 1);
+  assert.equal(result.summary.alreadyLinked, 1);
+  assert.equal(result.connection.rows.length, 1);
+  assert.equal(provider.createdTopics.length, 2);
+});
+
+test('Telegram provider waits for retry_after and repeats a rate-limited call', async () => {
+  const originalFetch = globalThis.fetch;
+  let calls = 0;
+  globalThis.fetch = async () => {
+    calls += 1;
+    return Response.json(
+      calls === 1
+        ? { ok: false, error_code: 429, description: 'Too Many Requests', parameters: { retry_after: 0 } }
+        : calls === 2
+          ? { ok: false, error_code: 429, description: 'Too Many Requests: retry after 0' }
+        : { ok: true, result: { message_thread_id: 42, name: 'Topic' } },
+      { status: calls < 3 ? 429 : 200 }
+    );
+  };
+
+  try {
+    const topic = await new HttpTelegramBotProvider().createForumTopic('123:token', '-100405', 'Topic');
+    assert.equal(topic.messageThreadId, 42);
+    assert.equal(calls, 3);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });
 
 test('TelegramService repair renames old topics and remaps threads to fresh topics', async () => {

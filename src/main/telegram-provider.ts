@@ -85,25 +85,45 @@ async function callTelegramApi<T>(
   method: string,
   payload: Record<string, unknown>
 ): Promise<T> {
-  const response = await fetch(`https://api.telegram.org/bot${botToken}/${method}`, {
-    method: 'POST',
-    headers: {
-      'content-type': 'application/json'
-    },
-    body: JSON.stringify(payload)
-  });
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const response = await fetch(`https://api.telegram.org/bot${botToken}/${method}`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json'
+      },
+      body: JSON.stringify(payload)
+    });
 
-  const data = (await response.json()) as {
-    ok: boolean;
-    result?: T;
-    description?: string;
-  };
+    const data = (await response.json()) as {
+      ok: boolean;
+      result?: T;
+      description?: string;
+      error_code?: number;
+      parameters?: { retry_after?: number };
+    };
 
-  if (!response.ok || !data.ok || data.result == null) {
+    if (response.ok && data.ok && data.result != null) {
+      return data.result;
+    }
+
+    const retryAfter =
+      data.parameters?.retry_after ??
+      Number(data.description?.match(/retry after (\d+)/i)?.[1] ?? NaN);
+    if (
+      attempt < 4 &&
+      (response.status === 429 || data.error_code === 429) &&
+      typeof retryAfter === 'number' &&
+      Number.isFinite(retryAfter) &&
+      retryAfter >= 0
+    ) {
+      await new Promise<void>((resolve) => setTimeout(resolve, (retryAfter + 1) * 1000));
+      continue;
+    }
+
     throw new Error(data.description ?? `Telegram API call ${method} failed.`);
   }
 
-  return data.result;
+  throw new Error(`Telegram API call ${method} exceeded retry limit.`);
 }
 
 export class HttpTelegramBotProvider implements TelegramBotProvider {

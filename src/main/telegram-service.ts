@@ -248,7 +248,10 @@ export class TelegramService {
     const stateWithRow = await this.configStore.upsertProjectRow(input);
     const row = input.rowId
       ? stateWithRow.rows.find((item) => item.id === input.rowId)
-      : stateWithRow.rows.at(-1);
+      : stateWithRow.rows.find(
+          (item) =>
+            item.forumGroupId === input.forumGroupId && item.projectId === input.projectId
+        );
     const shouldRemoveFailedDraftRow = !input.rowId;
 
     if (!row) {
@@ -278,7 +281,13 @@ export class TelegramService {
         connection: this.configStore.toConnectionState(finalState)
       };
     } catch (error) {
-      if (shouldRemoveFailedDraftRow) {
+      const registryState = await this.backendRegistry.readState();
+      const hasCreatedTopics = registryState.platformBindings.some(
+        (binding) =>
+          binding.projectId === row.projectId &&
+          isTelegramThreadBindingForChat(binding, row.forumGroupId)
+      );
+      if (shouldRemoveFailedDraftRow && !hasCreatedTopics) {
         await this.configStore.removeProjectRow(row.id);
       } else {
         await this.configStore.recordRowIssue(row.id, this.toTelegramIssue(error));

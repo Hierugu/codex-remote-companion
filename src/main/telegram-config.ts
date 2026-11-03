@@ -149,13 +149,18 @@ export class TelegramConfigStore {
 
   async upsertProjectRow(input: TelegramProjectSyncRowInput): Promise<TelegramConfigFileShape> {
     const state = await this.readState();
-    const existingRow = state.rows.find((item) => item.id === input.rowId);
+    const existingRow = input.rowId
+      ? state.rows.find((item) => item.id === input.rowId)
+      : state.rows.find(
+          (item) =>
+            item.forumGroupId === input.forumGroupId && item.projectId === input.projectId
+        );
     const preservesSetup =
       existingRow != null &&
       existingRow.forumGroupId === input.forumGroupId &&
       existingRow.projectId === input.projectId;
     const row: TelegramProjectSyncRow = {
-      id: input.rowId ?? `telegram-row:${randomUUID()}`,
+      id: existingRow?.id ?? input.rowId ?? `telegram-row:${randomUUID()}`,
       forumGroupId: input.forumGroupId,
       forumGroupTitle: input.forumGroupTitle,
       projectId: input.projectId,
