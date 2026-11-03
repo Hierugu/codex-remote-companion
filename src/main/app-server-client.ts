@@ -106,6 +106,7 @@ export class CodexAppServerClient {
     {
       resolve: (value: unknown) => void;
       reject: (error: Error) => void;
+      timeout: NodeJS.Timeout;
     }
   >();
 
@@ -124,6 +125,7 @@ export class CodexAppServerClient {
     });
     child.on('exit', () => {
       for (const pending of this.pending.values()) {
+        clearTimeout(pending.timeout);
         pending.reject(new Error('codex app-server exited before responding.'));
       }
       this.pending.clear();
@@ -168,7 +170,10 @@ export class CodexAppServerClient {
   }
 
   async threadResume(threadId: string): Promise<AppServerThreadResumeResponse> {
-    return this.request<AppServerThreadResumeResponse>('thread/resume', { threadId });
+    return this.request<AppServerThreadResumeResponse>('thread/resume', {
+      threadId,
+      excludeTurns: true
+    });
   }
 
   async turnStart(
@@ -227,6 +232,7 @@ export class CodexAppServerClient {
           reject(error);
         },
         timeout: setTimeout(() => {
+          this.notificationWaiters.delete(waiter);
           reject(new Error(`Timed out waiting for ${method} notification.`));
         }, timeoutMs)
       };
@@ -295,7 +301,21 @@ export class CodexAppServerClient {
     });
 
     return new Promise<T>((resolve, reject) => {
-      this.pending.set(id, { resolve: (value) => resolve(value as T), reject });
+      const timeout = setTimeout(() => {
+        this.pending.delete(id);
+        reject(new Error(`Timed out waiting for ${method} response.`));
+      }, 60000);
+      this.pending.set(id, {
+        resolve: (value) => {
+          clearTimeout(timeout);
+          resolve(value as T);
+        },
+        reject: (error) => {
+          clearTimeout(timeout);
+          reject(error);
+        },
+        timeout
+      });
       this.child.stdin.write(`${payload}\n`);
     });
   }
