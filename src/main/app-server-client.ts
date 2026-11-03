@@ -1,5 +1,24 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
+import { existsSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
 import { createInterface } from 'node:readline';
+
+export function resolveCodexCliExecutable(): string {
+  const appRoots = [
+    '/Applications/ChatGPT.app',
+    join(homedir(), 'Applications', 'ChatGPT.app'),
+    '/Applications/Codex.app',
+    join(homedir(), 'Applications', 'Codex.app')
+  ];
+  for (const appRoot of appRoots) {
+    const bundledCli = join(appRoot, 'Contents', 'Resources', 'codex-cli', 'bin', 'codex');
+    if (existsSync(bundledCli)) {
+      return bundledCli;
+    }
+  }
+  return 'codex';
+}
 
 interface JsonRpcLiteResponse {
   id?: number;
@@ -112,7 +131,7 @@ export class CodexAppServerClient {
   }
 
   static async start(): Promise<CodexAppServerClient> {
-    const child = spawn('codex', ['app-server', '--listen', 'stdio://'], {
+    const child = spawn(resolveCodexCliExecutable(), ['app-server', '--listen', 'stdio://'], {
       stdio: ['pipe', 'pipe', 'pipe']
     });
 

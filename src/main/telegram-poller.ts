@@ -106,6 +106,8 @@ export class TelegramInboundPoller {
         continue;
       }
 
+      let acknowledgement: { messageId: number } | null = null;
+      let projectThreadId: string | null = null;
       try {
         const inboundEvent = await this.telegramService.normalizeInboundMessage({
           chatId: message.chatId,
@@ -119,6 +121,7 @@ export class TelegramInboundPoller {
           skipped += 1;
           continue;
         }
+        projectThreadId = inboundEvent.projectThreadId;
 
         const slashCommand = await this.slashCommands.handle(inboundEvent.text, inboundEvent.threadId);
         if (slashCommand) {
@@ -133,6 +136,7 @@ export class TelegramInboundPoller {
           text: TELEGRAM_ACK_TEXT,
           replyToMessageId: message.messageId
         });
+        acknowledgement = ackMessage;
 
         this.outboundMirror?.suspendThread(inboundEvent.threadId);
         try {
@@ -161,6 +165,23 @@ export class TelegramInboundPoller {
         skipped += 1;
         if (isIgnorableBindingIssue(error)) {
           continue;
+        }
+        if (acknowledgement && projectThreadId) {
+          const detail = error instanceof Error ? error.message : 'Unknown Codex error';
+          const errorText = `Codex could not continue this chat: ${detail.slice(0, 900)}`;
+          try {
+            await this.telegramService.editThreadReply({
+              projectThreadId,
+              messageId: acknowledgement.messageId,
+              text: errorText
+            });
+          } catch {
+            await this.telegramService.sendThreadReply({
+              projectThreadId,
+              text: errorText,
+              replyToMessageId: message.messageId
+            }).catch(() => undefined);
+          }
         }
         await this.configStore.recordIssue(
           error instanceof Error ? error.message : 'Telegram inbound polling failed.'

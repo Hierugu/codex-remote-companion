@@ -267,6 +267,51 @@ test('TelegramInboundPoller routes bound topic messages into Codex and sends rep
   assert.equal(provider.sentMessages.length, 2);
 });
 
+test('TelegramInboundPoller replaces the working acknowledgement when Codex cannot resume', async () => {
+  const provider = new FakeTelegramPollingProvider();
+  provider.updates = [{
+    updateId: 201,
+    message: {
+      messageId: 71,
+      text: 'Continue this chat',
+      chatId: '-100555',
+      chatType: 'supergroup',
+      messageThreadId: 1,
+      senderId: '12345',
+      senderIsBot: false
+    }
+  }];
+  const edited: string[] = [];
+  const issues: string[] = [];
+  const config = {
+    getPollingConfig: async () => ({ botToken: '123:token', ownerUserId: '12345', lastUpdateId: null }),
+    recordLastUpdateId: async () => {},
+    recordIssue: async (issue: string) => { issues.push(issue); }
+  };
+  const service = {
+    normalizeInboundMessage: async () => ({
+      id: 'telegram:-100555:71', source: 'telegram', receivedAt: new Date().toISOString(),
+      text: 'Continue this chat', externalThreadId: 'telegram:topic:-100555:1',
+      projectKey: 'project-1', projectThreadId: 'project-thread-1', threadId: 'codex-thread-1'
+    }),
+    sendThreadReply: async () => ({ messageId: 900 }),
+    editThreadReply: async (input: { text: string }) => { edited.push(input.text); }
+  };
+  const poller = new TelegramInboundPoller(
+    config as never,
+    service as never,
+    { handleInboundEvent: async () => ({ accepted: true }) as never },
+    { resumeAndRun: async () => { throw new Error('unsupported stored thread item'); } },
+    fakeSlashCommandService(),
+    provider
+  );
+
+  const result = await poller.pollOnce();
+  assert.equal(result.skipped, 1);
+  assert.match(edited[0] ?? '', /Codex could not continue this chat: unsupported stored thread item/);
+  assert.deepEqual(issues, ['unsupported stored thread item']);
+});
+
 test('TelegramInboundPoller ignores unbound topic noise without poisoning Telegram status', async () => {
   const tempRoot = await mkdtemp(join(tmpdir(), 'codex-remote-companion-phase6-poller-'));
   const backendRegistry = new PersistentBackendRegistry(join(tempRoot, 'backend-registry.json'));

@@ -31,7 +31,7 @@ import { TelegramConfigStore } from './telegram-config';
 import { HttpTelegramBotProvider } from './telegram-provider';
 import { TelegramService } from './telegram-service';
 import { CodexThreadExecutor } from './codex-thread-executor';
-import { CodexAppServerClient } from './app-server-client';
+import { CodexAppServerClient, resolveCodexCliExecutable } from './app-server-client';
 import { TelegramInboundPoller } from './telegram-poller';
 import { createCodexOutboundPoller } from './codex-outbound-poller';
 import {
@@ -128,7 +128,8 @@ function getCodexDetection() {
   ].find((candidate) => existsSync(candidate)) ?? null;
   const appDetected = appPath !== null;
 
-  const cliDetected = spawnSync('which', ['codex'], {
+  const cliExecutable = resolveCodexCliExecutable();
+  const cliDetected = cliExecutable !== 'codex' || spawnSync('which', ['codex'], {
     stdio: 'ignore'
   }).status === 0;
 
@@ -136,7 +137,7 @@ function getCodexDetection() {
     appDetected,
     cliDetected,
     appVersion: appPath ? readCodexAppVersion(appPath) : null,
-    cliVersion: cliDetected ? readCodexCliVersion() : null
+    cliVersion: cliDetected ? readCodexCliVersion(cliExecutable) : null
   };
 }
 
@@ -166,8 +167,8 @@ function readCodexAppVersion(appPath: string): string | null {
   return buildVersion || null;
 }
 
-function readCodexCliVersion(): string | null {
-  const versionResult = spawnSync('codex', ['--version'], {
+function readCodexCliVersion(executable: string): string | null {
+  const versionResult = spawnSync(executable, ['--version'], {
     encoding: 'utf8'
   });
 
