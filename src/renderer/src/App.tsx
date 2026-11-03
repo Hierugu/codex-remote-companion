@@ -9,6 +9,7 @@ import type {
   CodexProjectThreadOption,
   MessengerKey,
   RuntimeBootstrapState,
+  StartupSettingsState,
   StatusBadgeState,
   TelegramConnectionState
 } from '@shared/contracts';
@@ -31,6 +32,12 @@ const initialState: RuntimeBootstrapState = {
     }
   ],
   serverPort: null
+};
+
+const initialStartupSettings: StartupSettingsState = {
+  launchAtLogin: false,
+  loginItemStatus: null,
+  autoStartServer: false
 };
 
 const initialSnapshot: CodexEnvironmentSnapshot = {
@@ -721,6 +728,10 @@ export default function App() {
   const [repairCandidateRow, setRepairCandidateRow] = useState<TelegramDraftRow | null>(null);
   const [removeCandidateRow, setRemoveCandidateRow] = useState<TelegramDraftRow | null>(null);
   const [serverAction, setServerAction] = useState<ServerAction>(null);
+  const [startupSettings, setStartupSettings] = useState<StartupSettingsState>(initialStartupSettings);
+  const [startupLoaded, setStartupLoaded] = useState(false);
+  const [startupAction, setStartupAction] = useState<'login' | 'server' | null>(null);
+  const [startupError, setStartupError] = useState<string | null>(null);
   const [bootError, setBootError] = useState<string | null>(null);
 
   const displayedServerStatus = getServerUiStatus(state.serverStatus, serverAction);
@@ -761,6 +772,11 @@ export default function App() {
       setBootError('Renderer bridge is unavailable. Restart Codex Remote Companion.');
       return;
     }
+
+    void window.codexDesktop.getStartupSettings()
+      .then(setStartupSettings)
+      .catch((error) => setStartupError(error instanceof Error ? error.message : String(error)))
+      .finally(() => setStartupLoaded(true));
 
     void (async () => {
       try {
@@ -966,6 +982,24 @@ export default function App() {
       await refreshChannelConnections();
     } finally {
       setServerAction(null);
+    }
+  }
+
+  async function handleStartupToggle(kind: 'login' | 'server', enabled: boolean) {
+    setStartupAction(kind);
+    setStartupError(null);
+    try {
+      const next = kind === 'login'
+        ? await window.codexDesktop.setLaunchAtLogin(enabled)
+        : await window.codexDesktop.setAutoStartServer(enabled);
+      setStartupSettings(next);
+      if (kind === 'login' && enabled && next.loginItemStatus === 'requires-approval') {
+        setStartupError('Allow Codex Remote Companion in macOS System Settings → Login Items.');
+      }
+    } catch (error) {
+      setStartupError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setStartupAction(null);
     }
   }
 
@@ -1324,6 +1358,27 @@ export default function App() {
                   serverAction !== null
                 )}
               </button>
+            </div>
+            <div className="startup-options">
+              <label className="startup-option">
+                <input
+                  type="checkbox"
+                  checked={startupSettings.launchAtLogin}
+                  disabled={!startupLoaded || startupAction !== null}
+                  onChange={(event) => void handleStartupToggle('login', event.currentTarget.checked)}
+                />
+                <span>Launch Companion when I log in to macOS</span>
+              </label>
+              <label className="startup-option">
+                <input
+                  type="checkbox"
+                  checked={startupSettings.autoStartServer}
+                  disabled={!startupLoaded || startupAction !== null}
+                  onChange={(event) => void handleStartupToggle('server', event.currentTarget.checked)}
+                />
+                <span>Start the server when Companion opens</span>
+              </label>
+              {startupError ? <p className="startup-error" role="status">{startupError}</p> : null}
             </div>
           </SectionCard>
 

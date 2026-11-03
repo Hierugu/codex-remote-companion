@@ -31,6 +31,12 @@ export interface RuntimeServerStartResult {
   state: RuntimeBootstrapState;
 }
 
+export interface StartupSettingsState {
+  launchAtLogin: boolean;
+  loginItemStatus: 'not-registered' | 'enabled' | 'requires-approval' | 'not-found' | null;
+  autoStartServer: boolean;
+}
+
 export interface CodexEnvironmentSnapshot {
   model: string | null;
   reasoningEffort: string | null;
@@ -489,6 +495,9 @@ export interface CodexDesktopApi {
   getBootstrapState: () => Promise<RuntimeBootstrapState>;
   startServer: () => Promise<RuntimeServerStartResult>;
   stopServer: () => Promise<RuntimeServerStartResult>;
+  getStartupSettings: () => Promise<StartupSettingsState>;
+  setLaunchAtLogin: (enabled: boolean) => Promise<StartupSettingsState>;
+  setAutoStartServer: (enabled: boolean) => Promise<StartupSettingsState>;
   getCodexEnvironmentSnapshot: () => Promise<CodexEnvironmentSnapshot>;
   listCodexThreads: () => Promise<CodexThreadListResult>;
   readCodexThread: (threadId: string) => Promise<CodexThreadRecord>;

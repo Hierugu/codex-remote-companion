@@ -27,6 +27,7 @@ import type {
   RepairResult,
   RuntimeBootstrapState,
   RuntimeServerStartResult,
+  StartupSettingsState,
   TelegramConnectionState,
   TelegramProjectSyncRowInput,
   TelegramRemoveBotTokenResult,
@@ -44,6 +45,12 @@ const api: CodexDesktopApi = {
     ipcRenderer.invoke('runtime:start-server') as Promise<RuntimeServerStartResult>,
   stopServer: () =>
     ipcRenderer.invoke('runtime:stop-server') as Promise<RuntimeServerStartResult>,
+  getStartupSettings: () =>
+    ipcRenderer.invoke('startup:get-settings') as Promise<StartupSettingsState>,
+  setLaunchAtLogin: (enabled) =>
+    ipcRenderer.invoke('startup:set-launch-at-login', enabled) as Promise<StartupSettingsState>,
+  setAutoStartServer: (enabled) =>
+    ipcRenderer.invoke('startup:set-auto-start-server', enabled) as Promise<StartupSettingsState>,
   getCodexEnvironmentSnapshot: () =>
     ipcRenderer.invoke('codex:get-environment-snapshot') as Promise<CodexEnvironmentSnapshot>,
   listCodexThreads: () =>

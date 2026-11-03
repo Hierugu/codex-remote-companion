@@ -12,6 +12,7 @@ import type {
   CodexThreadRecord,
   RuntimeBootstrapState,
   RuntimeServerStartResult,
+  StartupSettingsState,
 } from '@shared/contracts';
 import {
   buildRuntimeBootstrapState,
@@ -39,6 +40,7 @@ import {
   RemoteExecutionSettingsStore
 } from './remote-execution-settings';
 import { TelegramSlashCommandService } from './telegram-slash-commands';
+import { StartupSettingsStore } from './startup-settings';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const TELEGRAM_POLL_INTERVAL_MS = 3000;
@@ -49,6 +51,7 @@ const companionRegistry = new LocalCompanionRegistry();
 const backendRegistry = new PersistentBackendRegistry();
 const telegramConfigStore = new TelegramConfigStore();
 const remoteExecutionSettingsStore = new RemoteExecutionSettingsStore();
+const startupSettingsStore = new StartupSettingsStore();
 const telegramProvider = new HttpTelegramBotProvider();
 const telegramService = new TelegramService(
   telegramConfigStore,
@@ -193,6 +196,34 @@ function getRuntimeState(): RuntimeBootstrapState {
   });
 }
 
+async function getStartupSettings(): Promise<StartupSettingsState> {
+  const loginItem = process.platform === 'darwin' ? app.getLoginItemSettings() : null;
+  const status = loginItem?.status;
+  return {
+    launchAtLogin: loginItem?.openAtLogin ?? false,
+    loginItemStatus:
+      status === 'not-registered' || status === 'enabled' ||
+      status === 'requires-approval' || status === 'not-found'
+        ? status
+        : null,
+    autoStartServer: await startupSettingsStore.getAutoStartServer()
+  };
+}
+
+async function startRuntimeComponents(): Promise<RuntimeServerStartResult> {
+  await runtimeController.start();
+  try {
+    await codexOutboundPoller.start();
+    telegramPoller.start();
+  } catch (error) {
+    await runtimeController.stop();
+    throw error;
+  }
+  const state = getRuntimeState();
+  broadcastRuntimeState();
+  return { ok: true, state };
+}
+
 function getMainWindowTitle(): string {
   return 'Codex Remote Companion';
 }
@@ -245,6 +276,18 @@ async function createMainWindow(): Promise<void> {
 }
 
 ipcMain.handle('runtime:get-bootstrap-state', async () => getRuntimeState());
+ipcMain.handle('startup:get-settings', async () => getStartupSettings());
+ipcMain.handle('startup:set-launch-at-login', async (_event, enabled: boolean) => {
+  if (process.platform !== 'darwin') {
+    throw new Error('Launch at login is available on macOS only.');
+  }
+  app.setLoginItemSettings({ openAtLogin: enabled });
+  return getStartupSettings();
+});
+ipcMain.handle('startup:set-auto-start-server', async (_event, enabled: boolean) => {
+  await startupSettingsStore.setAutoStartServer(enabled);
+  return getStartupSettings();
+});
 ipcMain.handle(
   'codex:get-environment-snapshot',
   async (): Promise<CodexEnvironmentSnapshot> => codexStore.getEnvironmentSnapshot()
@@ -331,14 +374,7 @@ ipcMain.handle('telegram:sync', async () => telegramService.sync());
 
 ipcMain.handle(
   'runtime:start-server',
-  async (): Promise<RuntimeServerStartResult> => {
-    await runtimeController.start();
-    await codexOutboundPoller.start();
-    telegramPoller.start();
-    const state = getRuntimeState();
-    broadcastRuntimeState();
-    return { ok: true, state };
-  }
+  async (): Promise<RuntimeServerStartResult> => startRuntimeComponents()
 );
 
 ipcMain.handle(
@@ -357,6 +393,14 @@ ipcMain.handle(
 app.whenReady().then(async () => {
   await createMainWindow();
   broadcastRuntimeState();
+
+  try {
+    if (await startupSettingsStore.getAutoStartServer()) {
+      await startRuntimeComponents();
+    }
+  } catch (error) {
+    safeConsoleError(`Server auto-start failed: ${error instanceof Error ? error.message : String(error)}`);
+  }
 
   app.on('activate', async () => {
     if (BrowserWindow.getAllWindows().length === 0) {

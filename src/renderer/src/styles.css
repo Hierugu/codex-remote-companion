@@ -383,6 +383,40 @@ button:not(:disabled) {
   align-items: center;
 }
 
+.startup-options {
+  display: grid;
+  gap: 10px;
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid var(--card-border);
+}
+
+.startup-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--text-secondary);
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.startup-option input {
+  width: 16px;
+  height: 16px;
+  accent-color: #d9d9d9;
+  cursor: pointer;
+}
+
+.startup-option:has(input:disabled) {
+  opacity: 0.65;
+  cursor: default;
+}
+
+.startup-error {
+  color: #ffd8d4;
+  font-size: 13px;
+}
+
 .primary-button,
 .secondary-button,
 .danger-button {
