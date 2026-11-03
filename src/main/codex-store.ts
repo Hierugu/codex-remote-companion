@@ -23,6 +23,7 @@ interface GlobalStateShape {
   'electron-saved-workspace-roots'?: string[];
   'active-workspace-roots'?: string[];
   'project-order'?: string[];
+  'local-projects'?: Record<string, { rootPaths?: string[] }>;
 }
 
 interface AuthSummary {
@@ -680,16 +681,21 @@ export class CodexLocalStore {
   }
 
   async listProjectOptions(): Promise<CodexProjectOption[]> {
-    const [snapshot, threads] = await Promise.all([
+    const [snapshot, threads, globalState] = await Promise.all([
       this.getEnvironmentSnapshot(),
-      this.listThreads(1000)
+      this.listThreads(1000),
+      this.readGlobalState()
     ]);
     const cwdRoots = new Set<string>();
 
     for (const root of [
       ...snapshot.projectOrder,
       ...snapshot.activeWorkspaceRoots,
-      ...snapshot.savedWorkspaceRoots
+      ...snapshot.savedWorkspaceRoots,
+      ...Object.values(globalState['local-projects'] ?? {}).flatMap(
+        (project) => project.rootPaths ?? []
+      ),
+      ...threads.map((thread) => thread.cwd)
     ]) {
       if (root) {
         cwdRoots.add(root);

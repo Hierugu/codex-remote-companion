@@ -349,6 +349,28 @@ test('CodexLocalStore lists project options and project threads from local Codex
   assert.equal(threads[0]?.title, 'Live thread');
 });
 
+test('CodexLocalStore lists current local projects and existing chat workspaces', async () => {
+  const codexHome = await createFixtureCodexHome();
+  await writeFile(
+    join(codexHome, '.codex-global-state.json'),
+    JSON.stringify({
+      'local-projects': {
+        project_c: { id: 'project_c', name: 'Project C', rootPaths: ['/workspace/c'] }
+      }
+    })
+  );
+
+  const store = new CodexLocalStore(codexHome);
+  const projects = await store.listProjectOptions();
+
+  assert.deepEqual(
+    projects.map((project) => project.cwd),
+    ['/workspace/c', '/workspace/a', '/workspace/b']
+  );
+  assert.equal(projects.find((project) => project.cwd === '/workspace/a')?.threadCount, 1);
+  assert.equal(projects.find((project) => project.cwd === '/workspace/c')?.threadCount, 0);
+});
+
 test('CodexLocalStore reads persisted thread messages from rollout jsonl', async () => {
   const codexHome = await createFixtureCodexHome();
   const store = new CodexLocalStore(codexHome);
