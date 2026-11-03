@@ -41,6 +41,16 @@ function isIgnorableBindingIssue(error: unknown): boolean {
 }
 
 const TELEGRAM_ACK_TEXT = 'Prompt received. Working on it...';
+const TELEGRAM_REPLY_CHUNK_LENGTH = 3900;
+
+function splitReply(text: string): string[] {
+  const characters = Array.from(text);
+  const chunks: string[] = [];
+  for (let index = 0; index < characters.length; index += TELEGRAM_REPLY_CHUNK_LENGTH) {
+    chunks.push(characters.slice(index, index + TELEGRAM_REPLY_CHUNK_LENGTH).join(''));
+  }
+  return chunks;
+}
 
 export class TelegramInboundPoller {
   private running = false;
@@ -125,7 +135,7 @@ export class TelegramInboundPoller {
 
         const slashCommand = await this.slashCommands.handle(inboundEvent.text, inboundEvent.threadId);
         if (slashCommand) {
-          await this.sendSlashCommandReplies(inboundEvent.projectThreadId, message.messageId, slashCommand);
+          await this.sendSlashCommandReplies(inboundEvent.projectThreadId, slashCommand);
           processed += 1;
           await this.configStore.recordIssue(null);
           continue;
@@ -133,8 +143,7 @@ export class TelegramInboundPoller {
 
         const ackMessage = await this.telegramService.sendThreadReply({
           projectThreadId: inboundEvent.projectThreadId,
-          text: TELEGRAM_ACK_TEXT,
-          replyToMessageId: message.messageId
+          text: TELEGRAM_ACK_TEXT
         });
         acknowledgement = ackMessage;
 
@@ -150,11 +159,21 @@ export class TelegramInboundPoller {
               });
             }
           });
-          await this.telegramService.sendThreadReply({
+          const replyChunks = splitReply(execution.assistantReply);
+          if (replyChunks.length === 0) {
+            throw new Error('Codex completed without a reply.');
+          }
+          await this.telegramService.editThreadReply({
             projectThreadId: inboundEvent.projectThreadId,
-            text: execution.assistantReply,
-            replyToMessageId: message.messageId
+            messageId: ackMessage.messageId,
+            text: replyChunks[0]
           });
+          for (const text of replyChunks.slice(1)) {
+            await this.telegramService.sendThreadReply({
+              projectThreadId: inboundEvent.projectThreadId,
+              text
+            });
+          }
         } finally {
           await this.outboundMirror?.resumeThread(inboundEvent.threadId);
         }
@@ -178,8 +197,7 @@ export class TelegramInboundPoller {
           } catch {
             await this.telegramService.sendThreadReply({
               projectThreadId,
-              text: errorText,
-              replyToMessageId: message.messageId
+              text: errorText
             }).catch(() => undefined);
           }
         }
@@ -216,14 +234,12 @@ export class TelegramInboundPoller {
 
   private async sendSlashCommandReplies(
     projectThreadId: string,
-    replyToMessageId: number,
     result: TelegramSlashCommandResult
   ): Promise<void> {
     for (const text of result.messages) {
       await this.telegramService.sendThreadReply({
         projectThreadId,
-        text,
-        replyToMessageId
+        text
       });
     }
   }

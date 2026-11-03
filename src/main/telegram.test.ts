@@ -509,6 +509,31 @@ test('Telegram provider waits for retry_after and repeats a rate-limited call', 
   }
 });
 
+test('Telegram provider retries a transient network failure when editing a reply', async () => {
+  const originalFetch = globalThis.fetch;
+  let calls = 0;
+  globalThis.fetch = async () => {
+    calls += 1;
+    if (calls === 1) {
+      throw new TypeError('fetch failed');
+    }
+    return Response.json({
+      ok: true,
+      result: { message_id: 77, text: 'finished', chat: { id: -100405 } }
+    });
+  };
+
+  try {
+    const result = await new HttpTelegramBotProvider().editMessage('123:token', {
+      chatId: '-100405', messageId: 77, text: 'finished'
+    });
+    assert.equal(result.text, 'finished');
+    assert.equal(calls, 2);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test('TelegramService repair renames old topics and remaps threads to fresh topics', async () => {
   const tempRoot = await mkdtemp(join(tmpdir(), 'codex-remote-companion-phase6-'));
   const backendRegistry = new PersistentBackendRegistry(join(tempRoot, 'backend-registry.json'));

@@ -131,6 +131,7 @@ export class CodexThreadExecutor {
     const client = await this.getClient();
     const cwd = before.cwd ?? process.cwd();
     let lastProgressStage: CodexProgressStage | null = null;
+    let progressQueue = Promise.resolve();
     const unsubscribe = client.onNotification((method, params) => {
       const nextStage = resolveProgressStage(method, params);
       if (!nextStage || nextStage === lastProgressStage || !options?.onProgress) {
@@ -138,7 +139,11 @@ export class CodexThreadExecutor {
       }
 
       lastProgressStage = nextStage;
-      void options.onProgress(PROGRESS_MESSAGE_BY_STAGE[nextStage]);
+      progressQueue = progressQueue
+        .then(() => options.onProgress!(PROGRESS_MESSAGE_BY_STAGE[nextStage]))
+        .catch(() => {
+          // A transient Telegram edit failure must not interrupt the Codex turn.
+        });
     });
 
     try {
@@ -152,6 +157,7 @@ export class CodexThreadExecutor {
       });
       await client.waitForNotification('turn/completed', 180000);
       await waitForAssistantAppend(this.store, threadId, previousMessageCount, 120000);
+      await progressQueue;
 
       const after = await this.store.readThread(threadId);
       const appendedAssistantReply = getLastAssistantMessageText(

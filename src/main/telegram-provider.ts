@@ -86,13 +86,24 @@ async function callTelegramApi<T>(
   payload: Record<string, unknown>
 ): Promise<T> {
   for (let attempt = 0; attempt < 5; attempt += 1) {
-    const response = await fetch(`https://api.telegram.org/bot${botToken}/${method}`, {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json'
-      },
-      body: JSON.stringify(payload)
-    });
+    let response: Response;
+    try {
+      response = await fetch(`https://api.telegram.org/bot${botToken}/${method}`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json'
+        },
+        body: JSON.stringify(payload),
+        signal: AbortSignal.timeout(15000)
+      });
+    } catch (error) {
+      if (attempt === 4) {
+        const detail = error instanceof Error ? error.message : 'Unknown network error';
+        throw new Error(`Telegram API ${method} network error after 5 attempts: ${detail}`);
+      }
+      await new Promise<void>((resolve) => setTimeout(resolve, 500 * 2 ** attempt));
+      continue;
+    }
 
     const data = (await response.json()) as {
       ok: boolean;
@@ -117,6 +128,11 @@ async function callTelegramApi<T>(
       retryAfter >= 0
     ) {
       await new Promise<void>((resolve) => setTimeout(resolve, (retryAfter + 1) * 1000));
+      continue;
+    }
+
+    if (attempt < 4 && response.status >= 500) {
+      await new Promise<void>((resolve) => setTimeout(resolve, 500 * 2 ** attempt));
       continue;
     }
 
@@ -312,6 +328,16 @@ export class HttpTelegramBotProvider implements TelegramBotProvider {
       chat_id: input.chatId,
       message_id: input.messageId,
       text: input.text
+    }).catch((error) => {
+      if (error instanceof Error && /message is not modified/i.test(error.message)) {
+        return {
+          message_id: input.messageId,
+          text: input.text,
+          message_thread_id: undefined,
+          chat: { id: Number(input.chatId) }
+        };
+      }
+      throw error;
     });
 
     return {

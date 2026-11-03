@@ -234,16 +234,15 @@ test('TelegramInboundPoller routes bound topic messages into Codex and sends rep
   assert.equal(routedEvents[0]?.threadId, 'codex-thread-1');
   assert.equal(provider.sentMessages[0]?.chatId, '-100555');
   assert.equal(provider.sentMessages[0]?.messageThreadId, 1);
-  assert.equal(provider.sentMessages[0]?.replyToMessageId, 55);
+  assert.equal(provider.sentMessages[0]?.replyToMessageId, undefined);
   assert.equal(provider.sentMessages[0]?.text, 'Prompt received. Working on it...');
   assert.equal(provider.editedMessages[0]?.messageId, 1);
   assert.equal(provider.editedMessages[0]?.text, 'Running Codex...');
   assert.equal(provider.editedMessages[1]?.messageId, 1);
   assert.equal(provider.editedMessages[1]?.text, 'Applying changes...');
-  assert.equal(provider.sentMessages[1]?.chatId, '-100555');
-  assert.equal(provider.sentMessages[1]?.messageThreadId, 1);
-  assert.equal(provider.sentMessages[1]?.replyToMessageId, 55);
-  assert.equal(provider.sentMessages[1]?.text, 'telegram inbound reply ok');
+  assert.equal(provider.editedMessages[2]?.messageId, 1);
+  assert.equal(provider.editedMessages[2]?.text, 'telegram inbound reply ok');
+  assert.equal(provider.sentMessages.length, 1);
   assert.equal('model' in (executionOptions[0] ?? {}), false);
   assert.equal('reasoningEffort' in (executionOptions[0] ?? {}), false);
   assert.equal('permissionMode' in (executionOptions[0] ?? {}), false);
@@ -264,7 +263,7 @@ test('TelegramInboundPoller routes bound topic messages into Codex and sends rep
   assert.equal(unauthorized.processed, 0);
   assert.equal(unauthorized.skipped, 1);
   assert.equal(routedEvents.length, 1);
-  assert.equal(provider.sentMessages.length, 2);
+  assert.equal(provider.sentMessages.length, 1);
 });
 
 test('TelegramInboundPoller replaces the working acknowledgement when Codex cannot resume', async () => {
@@ -439,4 +438,5 @@ test('TelegramInboundPoller handles slash commands without starting a Codex turn
   assert.equal(executorRuns, 0);
   assert.equal(provider.sentMessages.length, 1);
   assert.equal(provider.sentMessages[0]?.text, 'status ok');
+  assert.equal(provider.sentMessages[0]?.replyToMessageId, undefined);
 });
