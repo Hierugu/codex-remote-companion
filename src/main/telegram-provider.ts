@@ -24,6 +24,7 @@ export interface TelegramSendMessageInput {
   chatId: string;
   messageThreadId: number | null;
   text: string;
+  format?: 'markdown';
   replyToMessageId?: number;
 }
 
@@ -38,6 +39,7 @@ export interface TelegramEditMessageInput {
   chatId: string;
   messageId: number;
   text: string;
+  format?: 'markdown';
 }
 
 export interface TelegramUpdateMessage {
@@ -140,6 +142,10 @@ async function callTelegramApi<T>(
   }
 
   throw new Error(`Telegram API call ${method} exceeded retry limit.`);
+}
+
+function isRichFormattingRejected(error: unknown): boolean {
+  return error instanceof Error && /^(Bad Request:|Not Found: method)/i.test(error.message);
 }
 
 export class HttpTelegramBotProvider implements TelegramBotProvider {
@@ -293,19 +299,39 @@ export class HttpTelegramBotProvider implements TelegramBotProvider {
     botToken: string,
     input: TelegramSendMessageInput
   ): Promise<TelegramSendMessageResult> {
-    const result = await callTelegramApi<{
+    type TelegramMessage = {
       message_id: number;
       text?: string;
       message_thread_id?: number;
       chat: { id: number };
-    }>(botToken, 'sendMessage', {
+    };
+    const payload = {
       chat_id: input.chatId,
       message_thread_id: input.messageThreadId ?? undefined,
-      text: input.text,
       reply_parameters: input.replyToMessageId
         ? { message_id: input.replyToMessageId }
         : undefined
-    });
+    };
+    let result: TelegramMessage;
+    if (input.format === 'markdown') {
+      try {
+        result = await callTelegramApi<TelegramMessage>(botToken, 'sendRichMessage', {
+          ...payload,
+          rich_message: { markdown: input.text }
+        });
+      } catch (error) {
+        if (!isRichFormattingRejected(error)) throw error;
+        result = await callTelegramApi<TelegramMessage>(botToken, 'sendMessage', {
+          ...payload,
+          text: input.text
+        });
+      }
+    } else {
+      result = await callTelegramApi<TelegramMessage>(botToken, 'sendMessage', {
+        ...payload,
+        text: input.text
+      });
+    }
 
     return {
       chatId: String(result.chat.id),
@@ -319,26 +345,35 @@ export class HttpTelegramBotProvider implements TelegramBotProvider {
     botToken: string,
     input: TelegramEditMessageInput
   ): Promise<TelegramSendMessageResult> {
-    const result = await callTelegramApi<{
+    type TelegramMessage = {
       message_id: number;
       text?: string;
       message_thread_id?: number;
       chat: { id: number };
-    }>(botToken, 'editMessageText', {
-      chat_id: input.chatId,
-      message_id: input.messageId,
-      text: input.text
-    }).catch((error) => {
-      if (error instanceof Error && /message is not modified/i.test(error.message)) {
-        return {
+    };
+    const payload = { chat_id: input.chatId, message_id: input.messageId };
+    const callEdit = (rich: boolean): Promise<TelegramMessage> =>
+      callTelegramApi<TelegramMessage>(botToken, 'editMessageText', {
+        ...payload,
+        ...(rich ? { rich_message: { markdown: input.text } } : { text: input.text })
+      });
+    let result: TelegramMessage;
+    try {
+      result = await callEdit(input.format === 'markdown');
+    } catch (error) {
+      if (input.format === 'markdown' && isRichFormattingRejected(error)) {
+        result = await callEdit(false);
+      } else if (error instanceof Error && /message is not modified/i.test(error.message)) {
+        result = {
           message_id: input.messageId,
           text: input.text,
           message_thread_id: undefined,
           chat: { id: Number(input.chatId) }
         };
+      } else {
+        throw error;
       }
-      throw error;
-    });
+    }
 
     return {
       chatId: String(result.chat.id),

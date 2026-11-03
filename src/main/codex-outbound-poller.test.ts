@@ -45,15 +45,17 @@ test('Codex outbound mirror sends only new desktop messages and remembers its cu
     }
   };
   const sent: string[] = [];
+  const formats: Array<string | undefined> = [];
   let failNextSend = false;
   const telegram = {
-    async sendThreadReply(input: { projectThreadId: string; text: string }) {
+    async sendThreadReply(input: { projectThreadId: string; text: string; format?: 'markdown' }) {
       assert.equal(input.projectThreadId, 'project-thread:thread-1');
       if (failNextSend) {
         failNextSend = false;
         throw new Error('Temporary Telegram failure');
       }
       sent.push(input.text);
+      formats.push(input.format);
       return { chatId: '-1001', messageThreadId: 5, messageId: sent.length, text: input.text };
     }
   };
@@ -72,7 +74,8 @@ test('Codex outbound mirror sends only new desktop messages and remembers its cu
   await utimes(rolloutPath, changed, changed);
   await mirror.pollOnce();
   await mirror.pollOnce();
-  assert.deepEqual(sent, ['👤 New prompt', '🤖 New answer']);
+  assert.deepEqual(sent, ['👤 New prompt', '🤖\nNew answer']);
+  assert.deepEqual(formats, [undefined, 'markdown']);
 
   messages.push({ timestamp: null, role: 'assistant', text: 'Retry me', sourceType: 'response_item.message', phase: 'final_answer' });
   await writeFile(rolloutPath, '{}\n{}\n{}\n');
@@ -81,11 +84,11 @@ test('Codex outbound mirror sends only new desktop messages and remembers its cu
   failNextSend = true;
   await assert.rejects(() => mirror.pollOnce(), /Temporary Telegram failure/);
   await mirror.pollOnce();
-  assert.deepEqual(sent, ['👤 New prompt', '🤖 New answer', '🤖 Retry me']);
+  assert.deepEqual(sent, ['👤 New prompt', '🤖\nNew answer', '🤖\nRetry me']);
 
   const restarted = new CodexOutboundPoller(store, registry, telegram, cursorPath);
   await restarted.pollOnce();
-  assert.deepEqual(sent, ['👤 New prompt', '🤖 New answer', '🤖 Retry me']);
+  assert.deepEqual(sent, ['👤 New prompt', '🤖\nNew answer', '🤖\nRetry me']);
 
   restarted.suspendThread('thread-1');
   messages.push(
@@ -96,5 +99,5 @@ test('Codex outbound mirror sends only new desktop messages and remembers its cu
   await restarted.pollOnce();
   await restarted.resumeThread('thread-1');
   await restarted.pollOnce();
-  assert.deepEqual(sent, ['👤 New prompt', '🤖 New answer', '🤖 Retry me']);
+  assert.deepEqual(sent, ['👤 New prompt', '🤖\nNew answer', '🤖\nRetry me']);
 });

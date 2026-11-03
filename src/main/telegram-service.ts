@@ -111,6 +111,7 @@ export interface TelegramInboundMessageInput {
 export interface TelegramReplyInput {
   projectThreadId: string;
   text: string;
+  format?: 'markdown';
   replyToMessageId?: number;
 }
 
@@ -118,6 +119,7 @@ export interface TelegramEditReplyInput {
   projectThreadId: string;
   messageId: number;
   text: string;
+  format?: 'markdown';
 }
 
 export class TelegramService {
@@ -521,6 +523,7 @@ export class TelegramService {
       chatId: destination.chatId,
       messageThreadId: destination.messageThreadId,
       text: input.text,
+      format: input.format,
       replyToMessageId: input.replyToMessageId
     };
 
@@ -550,7 +553,8 @@ export class TelegramService {
     return this.provider.editMessage(configState.botToken, {
       chatId: destination.chatId,
       messageId: input.messageId,
-      text: input.text
+      text: input.text,
+      format: input.format
     });
   }
 

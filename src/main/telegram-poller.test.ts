@@ -242,6 +242,7 @@ test('TelegramInboundPoller routes bound topic messages into Codex and sends rep
   assert.equal(provider.editedMessages[1]?.text, 'Applying changes...');
   assert.equal(provider.editedMessages[2]?.messageId, 1);
   assert.equal(provider.editedMessages[2]?.text, 'telegram inbound reply ok');
+  assert.equal(provider.editedMessages[2]?.format, 'markdown');
   assert.equal(provider.sentMessages.length, 1);
   assert.equal('model' in (executionOptions[0] ?? {}), false);
   assert.equal('reasoningEffort' in (executionOptions[0] ?? {}), false);

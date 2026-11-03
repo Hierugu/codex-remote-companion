@@ -534,6 +534,52 @@ test('Telegram provider retries a transient network failure when editing a reply
   }
 });
 
+test('Telegram provider edits Codex Markdown as a rich message', async () => {
+  const originalFetch = globalThis.fetch;
+  const requests: Array<{ method: string; body: Record<string, unknown> }> = [];
+  globalThis.fetch = async (url, options) => {
+    requests.push({
+      method: String(url).split('/').at(-1) ?? '',
+      body: JSON.parse(String(options?.body)) as Record<string, unknown>
+    });
+    return Response.json({ ok: true, result: { message_id: 77, chat: { id: -100405 } } });
+  };
+
+  try {
+    const markdown = '**Готово** в [ПР](https://example.com/review/1): `code`';
+    const result = await new HttpTelegramBotProvider().editMessage('123:token', {
+      chatId: '-100405', messageId: 77, text: markdown, format: 'markdown'
+    });
+    assert.equal(result.text, markdown);
+    assert.equal(requests[0]?.method, 'editMessageText');
+    assert.deepEqual(requests[0]?.body.rich_message, { markdown });
+    assert.equal('text' in (requests[0]?.body ?? {}), false);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('Telegram provider falls back to plain text when rich Markdown is rejected', async () => {
+  const originalFetch = globalThis.fetch;
+  const requests: Array<Record<string, unknown>> = [];
+  globalThis.fetch = async (_url, options) => {
+    requests.push(JSON.parse(String(options?.body)) as Record<string, unknown>);
+    return requests.length === 1
+      ? Response.json({ ok: false, description: "Bad Request: can't parse rich message" }, { status: 400 })
+      : Response.json({ ok: true, result: { message_id: 77, chat: { id: -100405 } } });
+  };
+
+  try {
+    await new HttpTelegramBotProvider().editMessage('123:token', {
+      chatId: '-100405', messageId: 77, text: '**Готово**', format: 'markdown'
+    });
+    assert.deepEqual(requests[0]?.rich_message, { markdown: '**Готово**' });
+    assert.equal(requests[1]?.text, '**Готово**');
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test('TelegramService repair renames old topics and remaps threads to fresh topics', async () => {
   const tempRoot = await mkdtemp(join(tmpdir(), 'codex-remote-companion-phase6-'));
   const backendRegistry = new PersistentBackendRegistry(join(tempRoot, 'backend-registry.json'));

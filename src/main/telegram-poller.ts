@@ -42,6 +42,7 @@ function isIgnorableBindingIssue(error: unknown): boolean {
 
 const TELEGRAM_ACK_TEXT = 'Prompt received. Working on it...';
 const TELEGRAM_REPLY_CHUNK_LENGTH = 3900;
+const TELEGRAM_RICH_REPLY_MAX_BYTES = 30000;
 
 function splitReply(text: string): string[] {
   const characters = Array.from(text);
@@ -163,12 +164,15 @@ export class TelegramInboundPoller {
           if (replyChunks.length === 0) {
             throw new Error('Codex completed without a reply.');
           }
+          const sendAsRichMessage = Buffer.byteLength(execution.assistantReply, 'utf8') <=
+            TELEGRAM_RICH_REPLY_MAX_BYTES;
           await this.telegramService.editThreadReply({
             projectThreadId: inboundEvent.projectThreadId,
             messageId: ackMessage.messageId,
-            text: replyChunks[0]
+            text: sendAsRichMessage ? execution.assistantReply : replyChunks[0],
+            format: sendAsRichMessage ? 'markdown' : undefined
           });
-          for (const text of replyChunks.slice(1)) {
+          for (const text of sendAsRichMessage ? [] : replyChunks.slice(1)) {
             await this.telegramService.sendThreadReply({
               projectThreadId: inboundEvent.projectThreadId,
               text

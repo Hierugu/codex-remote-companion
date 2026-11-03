@@ -18,7 +18,7 @@ interface Registry {
 }
 
 interface TelegramSender {
-  sendThreadReply(input: { projectThreadId: string; text: string }): ReturnType<TelegramService['sendThreadReply']>;
+  sendThreadReply(input: { projectThreadId: string; text: string; format?: 'markdown' }): ReturnType<TelegramService['sendThreadReply']>;
 }
 
 interface CursorState {
@@ -34,6 +34,7 @@ interface LinkedThread {
 
 const POLL_INTERVAL_MS = 3000;
 const MAX_MESSAGE_LENGTH = 3900;
+const MAX_RICH_MESSAGE_BYTES = 30000;
 
 function isMirrorable(message: CodexThreadMessage): boolean {
   return message.sourceType === 'response_item.message' &&
@@ -121,9 +122,17 @@ export class CodexOutboundPoller {
         if (this.suspended.has(link.codexThreadId)) break;
         const message = thread.messages[index];
         if (message && isMirrorable(message) && message.text.trim()) {
-          const prefix = message.role === 'user' ? '👤 ' : '🤖 ';
-          for (const text of splitMessage(message.text, prefix)) {
-            await this.telegram.sendThreadReply({ projectThreadId: link.projectThreadId, text });
+          if (message.role === 'assistant' && Buffer.byteLength(message.text, 'utf8') <= MAX_RICH_MESSAGE_BYTES) {
+            await this.telegram.sendThreadReply({
+              projectThreadId: link.projectThreadId,
+              text: `🤖\n${message.text}`,
+              format: 'markdown'
+            });
+          } else {
+            const prefix = message.role === 'user' ? '👤 ' : '🤖 ';
+            for (const text of splitMessage(message.text, prefix)) {
+              await this.telegram.sendThreadReply({ projectThreadId: link.projectThreadId, text });
+            }
           }
         }
         this.cursors[link.codexThreadId] = index + 1;
