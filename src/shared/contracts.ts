@@ -109,6 +109,7 @@ export interface CodexThreadMessage {
   text: string;
   sourceType: string;
   phase?: string | null;
+  isHarnessGenerated?: boolean;
 }
 
 export interface CodexThreadRecord {

@@ -328,6 +328,21 @@ function extractMessageFromRolloutLine(line: unknown): CodexThreadMessage | null
         return null;
       }
 
+      const metadata = payload.internal_chat_message_metadata_passthrough;
+      const contentMetadata =
+        metadata && typeof metadata === 'object' && 'content_item_metadata' in metadata
+          ? (metadata as { content_item_metadata?: unknown }).content_item_metadata
+          : null;
+      const isHarnessGenerated = role === 'user' &&
+        Array.isArray(contentMetadata) &&
+        contentMetadata.length > 0 &&
+        contentMetadata.every((item) =>
+          item && typeof item === 'object' &&
+          'provenance' in item &&
+          item.provenance && typeof item.provenance === 'object' &&
+          'type' in item.provenance && item.provenance.type === 'harness'
+        );
+
       return {
         timestamp: typeof entry.timestamp === 'string' ? entry.timestamp : null,
         role: role === 'user' || role === 'assistant' || role === 'system' || role === 'developer'
@@ -335,7 +350,8 @@ function extractMessageFromRolloutLine(line: unknown): CodexThreadMessage | null
           : 'unknown',
         text,
         sourceType: 'response_item.message',
-        phase: typeof payload.phase === 'string' ? payload.phase : null
+        phase: typeof payload.phase === 'string' ? payload.phase : null,
+        isHarnessGenerated
       };
     }
   }
@@ -417,6 +433,7 @@ function deriveThreadTitle(
   const firstUserOrAssistantMessage = messages.find(
     (message) =>
       (message.role === 'user' || message.role === 'assistant') &&
+      !message.isHarnessGenerated &&
       extractThreadTitleCandidate(message.text) !== null
   );
 
@@ -454,6 +471,7 @@ async function deriveThreadTitleFromRolloutPath(
       if (
         message &&
         (message.role === 'user' || message.role === 'assistant') &&
+        !message.isHarnessGenerated &&
         extractThreadTitleCandidate(message.text) !== null
       ) {
         return extractThreadTitleCandidate(message.text) ?? threadId;

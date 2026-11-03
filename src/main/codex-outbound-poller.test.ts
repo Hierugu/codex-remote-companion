@@ -65,6 +65,7 @@ test('Codex outbound mirror sends only new desktop messages and remembers its cu
   assert.deepEqual(sent, []);
 
   messages.push(
+    { timestamp: null, role: 'user', text: '<external_codex_apps_open_page>{"page_id":null}</external_codex_apps_open_page>', sourceType: 'response_item.message', isHarnessGenerated: true },
     { timestamp: null, role: 'user', text: 'New prompt', sourceType: 'response_item.message' },
     { timestamp: null, role: 'assistant', text: 'Working', sourceType: 'response_item.message', phase: 'commentary' },
     { timestamp: null, role: 'assistant', text: 'New answer', sourceType: 'response_item.message', phase: 'final_answer' }

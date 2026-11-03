@@ -385,6 +385,43 @@ test('CodexLocalStore reads persisted thread messages from rollout jsonl', async
   assert.match(thread.messages[1]?.text ?? '', /assistant/);
 });
 
+test('CodexLocalStore marks harness-generated user items separately from user text', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'codex-remote-companion-harness-'));
+  const sessionDir = join(root, 'sessions', '2026', '04', '19');
+  await mkdir(sessionDir, { recursive: true });
+  await writeFile(join(root, 'session_index.jsonl'), '');
+  await writeFile(join(sessionDir, 'rollout-harness.jsonl'), [
+    JSON.stringify({ type: 'session_meta', payload: { id: 'thr_harness', cwd: '/workspace/a' } }),
+    JSON.stringify({
+      type: 'response_item',
+      payload: {
+        type: 'message', role: 'user',
+        content: [{ type: 'input_text', text: '<external_codex_apps_open_page>{"page_id":null}</external_codex_apps_open_page>' }],
+        internal_chat_message_metadata_passthrough: {
+          content_item_kinds: ['additional_content.codex_apps_open_page'],
+          content_item_metadata: [{ provenance: { type: 'harness', hook: false } }]
+        }
+      }
+    }),
+    JSON.stringify({
+      type: 'response_item',
+      payload: {
+        type: 'message', role: 'user',
+        content: [{ type: 'input_text', text: 'Actual user prompt' }],
+        internal_chat_message_metadata_passthrough: {
+          content_item_kinds: ['user.text'],
+          content_item_metadata: [{ provenance: { type: 'user' } }]
+        }
+      }
+    })
+  ].join('\n'));
+
+  const thread = await new CodexLocalStore(root).readThread('thr_harness');
+  assert.equal(thread.title, 'Actual user prompt');
+  assert.equal(thread.messages[0]?.isHarnessGenerated, true);
+  assert.equal(thread.messages[1]?.isHarnessGenerated, false);
+});
+
 test('CodexLocalStore skips environment context wrappers when deriving thread title', async () => {
   const root = await mkdtemp(join(tmpdir(), 'codex-remote-companion-phase2-'));
   await mkdir(join(root, 'sessions', '2026', '04', '19'), { recursive: true });

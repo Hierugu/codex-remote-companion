@@ -38,7 +38,7 @@ const MAX_RICH_MESSAGE_BYTES = 30000;
 
 function isMirrorable(message: CodexThreadMessage): boolean {
   return message.sourceType === 'response_item.message' &&
-    (message.role === 'user' ||
+    ((message.role === 'user' && !message.isHarnessGenerated) ||
       (message.role === 'assistant' && message.phase === 'final_answer'));
 }
 
