@@ -149,7 +149,17 @@ export class CodexAppServerClient {
       waiter.reject(new Error('codex app-server client disposed before notification arrived.'));
     }
     this.notificationWaiters.clear();
-    this.child.kill();
+    if (this.child.exitCode !== null || this.child.signalCode !== null) {
+      return;
+    }
+    await new Promise<void>((resolve) => {
+      const forceKill = setTimeout(() => this.child.kill('SIGKILL'), 5000);
+      this.child.once('exit', () => {
+        clearTimeout(forceKill);
+        resolve();
+      });
+      this.child.kill('SIGTERM');
+    });
   }
 
   async threadStart(cwd: string): Promise<AppServerThreadStartResponse> {

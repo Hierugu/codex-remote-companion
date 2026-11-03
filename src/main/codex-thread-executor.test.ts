@@ -40,6 +40,7 @@ test('CodexThreadExecutor does not override user-selected model, reasoning, or p
       }
     | null = null;
 
+  let disposeCount = 0;
   const client = {
     threadResume: async (threadId: string) => ({ thread: { id: threadId } }),
     turnStart: async (
@@ -63,7 +64,7 @@ test('CodexThreadExecutor does not override user-selected model, reasoning, or p
       return { turn: { id: 'turn-1', status: 'completed' } };
     },
     onNotification: () => () => {},
-    dispose: async () => {}
+    dispose: async () => { disposeCount += 1; }
   };
 
   const executor = new CodexThreadExecutor(
@@ -81,4 +82,21 @@ test('CodexThreadExecutor does not override user-selected model, reasoning, or p
       cwd: '/tmp/project'
     }
   });
+  assert.equal(disposeCount, 1);
+});
+
+test('CodexThreadExecutor releases the writer when resuming fails', async () => {
+  let disposeCount = 0;
+  const store = {
+    readThread: async () => ({ cwd: '/tmp/project', messages: [] })
+  };
+  const client = {
+    threadResume: async () => { throw new Error('resume failed'); },
+    onNotification: () => () => {},
+    dispose: async () => { disposeCount += 1; }
+  };
+  const executor = new CodexThreadExecutor(store as never, async () => client as never);
+
+  await assert.rejects(() => executor.resumeAndRun('codex-thread-1', 'hello'), /resume failed/);
+  assert.equal(disposeCount, 1);
 });

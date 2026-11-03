@@ -172,11 +172,9 @@ export class CodexThreadExecutor {
         threadId,
         assistantReply: appendedAssistantReply
       };
-    } catch (error) {
-      await this.resetClient();
-      throw error;
     } finally {
       unsubscribe();
+      await this.resetClient();
     }
   }
 
