@@ -440,6 +440,7 @@ export interface TelegramConnectionState {
   status: StatusBadgeState;
   maskedBotToken: string | null;
   botUsername: string | null;
+  ownerUserId: string | null;
   rows: TelegramProjectSyncRow[];
   lastSync: TelegramSyncSummary | null;
   issue: string | null;
@@ -520,7 +521,7 @@ export interface CodexDesktopApi {
   getTelegramConnectionState: () => Promise<TelegramConnectionState>;
   validateTelegramConnection: () => Promise<TelegramConnectionState>;
   checkTelegramEnvironment: (rowId: string) => Promise<TelegramConnectionState>;
-  setTelegramBotToken: (token: string) => Promise<TelegramSetBotTokenResult>;
+  setTelegramBotToken: (token: string, ownerUserId: string) => Promise<TelegramSetBotTokenResult>;
   removeTelegramBotToken: () => Promise<TelegramRemoveBotTokenResult>;
   upsertTelegramProjectSyncRow: (
     input: TelegramProjectSyncRowInput

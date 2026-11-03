@@ -305,8 +305,8 @@ ipcMain.handle('telegram:validate-connection', async () =>
 ipcMain.handle('telegram:check-environment', async (_event, rowId: string) =>
   telegramService.checkEnvironment(rowId)
 );
-ipcMain.handle('telegram:set-bot-token', async (_event, token: string) =>
-  telegramService.setBotToken(token)
+ipcMain.handle('telegram:set-bot-token', async (_event, token: string, ownerUserId: string) =>
+  telegramService.setBotToken(token, ownerUserId)
 );
 ipcMain.handle('telegram:remove-bot-token', async () =>
   telegramService.removeBotToken()

@@ -27,6 +27,8 @@ The Telegram token is stored locally in:
 ~/.codex-remote-companion/telegram-config.json
 ```
 
+The companion writes the config file with owner-only permissions (0600).
+
 The UI shows only a masked token, but the local JSON file contains the usable token. Protect the user's machine account and disk.
 
 If a token is exposed:
@@ -38,9 +40,9 @@ If a token is exposed:
 
 ## Group Access
 
-Only invite trusted people to a connected Telegram group or topic.
+Configure your positive numeric Telegram user ID with the bot token. The bridge ignores messages from other users, including other members of a bound topic. If no owner ID is configured, it accepts no incoming prompts.
 
-Anyone who can send messages in a bound topic can ask Codex to work in the mapped local thread. The actual filesystem/tool permission behavior is still controlled by Codex settings, but prompts can still consume model usage and affect the user's workflow.
+Only invite trusted people to a connected Telegram group or topic. The bot can read messages there, and Telegram group administrators can manage membership. Codex's filesystem and tool permissions still apply to accepted prompts.
 
 ## Permissions
 

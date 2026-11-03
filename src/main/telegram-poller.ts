@@ -73,7 +73,7 @@ export class TelegramInboundPoller {
 
   async pollOnce(): Promise<TelegramPollingCycleResult> {
     const config = await this.configStore.getPollingConfig();
-    if (!config.botToken) {
+    if (!config.botToken || !config.ownerUserId) {
       return { processed: 0, skipped: 0, lastUpdateId: config.lastUpdateId };
     }
 
@@ -95,7 +95,7 @@ export class TelegramInboundPoller {
       maxUpdateId = maxUpdateId == null ? update.updateId : Math.max(maxUpdateId, update.updateId);
 
       const message = update.message;
-      if (!message || message.senderIsBot || !message.text?.trim()) {
+      if (!message || message.senderIsBot || message.senderId !== config.ownerUserId || !message.text?.trim()) {
         skipped += 1;
         continue;
       }

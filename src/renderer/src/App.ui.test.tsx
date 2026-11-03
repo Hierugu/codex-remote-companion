@@ -46,6 +46,7 @@ function connection(overrides: Partial<TelegramConnectionState> = {}): TelegramC
     status: { tone: 'green', text: 'Active' },
     maskedBotToken: '8571788070:********56sY',
     botUsername: 'apsboydmdmmd_bot',
+    ownerUserId: '12345',
     rows: [],
     lastSync: null,
     issue: null,

@@ -78,7 +78,7 @@ test('CodexThreadExecutor does not override user-selected model, reasoning, or p
     threadId: 'codex-thread-1',
     prompt: 'run with current Codex settings',
     options: {
-      cwd: process.cwd()
+      cwd: '/tmp/project'
     }
   });
 });

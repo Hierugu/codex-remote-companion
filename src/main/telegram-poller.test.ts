@@ -165,7 +165,7 @@ test('TelegramInboundPoller routes bound topic messages into Codex and sends rep
   const service = new TelegramService(configStore, backendRegistry, provider);
   const project = await seedTelegramProject(backendRegistry);
 
-  await service.setBotToken('123456:ABCDefghijklmnopqrstuvwxyz_1234');
+  await service.setBotToken('123456:ABCDefghijklmnopqrstuvwxyz_1234', '12345');
   await service.upsertProjectSyncRow({
     forumGroupId: '-100555',
     forumGroupTitle: 'Project forum',
@@ -247,6 +247,24 @@ test('TelegramInboundPoller routes bound topic messages into Codex and sends rep
   assert.equal('model' in (executionOptions[0] ?? {}), false);
   assert.equal('reasoningEffort' in (executionOptions[0] ?? {}), false);
   assert.equal('permissionMode' in (executionOptions[0] ?? {}), false);
+
+  provider.updates = [{
+    updateId: 104,
+    message: {
+      messageId: 58,
+      text: 'unauthorized prompt',
+      chatId: '-100555',
+      chatType: 'supergroup',
+      messageThreadId: 1,
+      senderId: '99999',
+      senderIsBot: false
+    }
+  }];
+  const unauthorized = await poller.pollOnce();
+  assert.equal(unauthorized.processed, 0);
+  assert.equal(unauthorized.skipped, 1);
+  assert.equal(routedEvents.length, 1);
+  assert.equal(provider.sentMessages.length, 2);
 });
 
 test('TelegramInboundPoller ignores unbound topic noise without poisoning Telegram status', async () => {
@@ -257,7 +275,7 @@ test('TelegramInboundPoller ignores unbound topic noise without poisoning Telegr
   const service = new TelegramService(configStore, backendRegistry, provider);
   const project = await seedTelegramProject(backendRegistry);
 
-  await service.setBotToken('123456:ABCDefghijklmnopqrstuvwxyz_1234');
+  await service.setBotToken('123456:ABCDefghijklmnopqrstuvwxyz_1234', '12345');
   await service.upsertProjectSyncRow({
     forumGroupId: '-100556',
     forumGroupTitle: 'Project forum',
@@ -315,7 +333,7 @@ test('TelegramInboundPoller handles slash commands without starting a Codex turn
   const service = new TelegramService(configStore, backendRegistry, provider);
   const project = await seedTelegramProject(backendRegistry);
 
-  await service.setBotToken('123456:ABCDefghijklmnopqrstuvwxyz_1234');
+  await service.setBotToken('123456:ABCDefghijklmnopqrstuvwxyz_1234', '12345');
   await service.upsertProjectSyncRow({
     forumGroupId: '-100557',
     forumGroupTitle: 'Project forum',

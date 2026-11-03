@@ -57,6 +57,7 @@ const initialTelegramConnection: TelegramConnectionState = {
   status: { tone: 'yellow', text: 'Loading saved state' },
   maskedBotToken: null,
   botUsername: null,
+  ownerUserId: null,
   rows: [],
   lastSync: null,
   issue: null
@@ -704,6 +705,7 @@ export default function App() {
     createTelegramDraftRow()
   ]);
   const [telegramTokenInput, setTelegramTokenInput] = useState('');
+  const [telegramOwnerIdInput, setTelegramOwnerIdInput] = useState('');
   const [telegramAction, setTelegramAction] = useState<TelegramAction>(null);
   const [telegramActionTargetLocalId, setTelegramActionTargetLocalId] = useState<string | null>(
     null
@@ -981,7 +983,10 @@ export default function App() {
     setTelegramActionTargetLocalId(null);
     setTelegramError(null);
     try {
-      const result = await window.codexDesktop.setTelegramBotToken(token);
+      const result = await window.codexDesktop.setTelegramBotToken(
+        token,
+        telegramOwnerIdInput.trim() || telegramConnection.ownerUserId || ''
+      );
       setTelegramConnection(result.connection);
       setTelegramDraftRows((currentRows) => buildTelegramDraftRows(result.connection, currentRows));
       setTelegramTokenInput('');
@@ -1000,8 +1005,8 @@ export default function App() {
 
   async function handleSaveTelegramToken() {
     const token = telegramTokenInput.trim();
-    if (!token) {
-      setTelegramError('Paste a Telegram bot token first.');
+    if (!token || !/^[1-9][0-9]*$/.test(telegramOwnerIdInput.trim() || telegramConnection.ownerUserId || '')) {
+      setTelegramError('Enter a bot token and your positive numeric Telegram user ID.');
       return null;
     }
 
@@ -1385,6 +1390,18 @@ export default function App() {
                 masked value after it is saved.
               </p>
             </div>
+
+            <label className="form-field">
+              <span>Your Telegram user ID (only this account can send Codex prompts)</span>
+              <input
+                type="text"
+                inputMode="numeric"
+                value={telegramOwnerIdInput}
+                onChange={(event) => setTelegramOwnerIdInput(event.target.value)}
+                placeholder={telegramConnection.ownerUserId ?? 'Numeric user ID'}
+                disabled={globalActionInProgress}
+              />
+            </label>
 
             <div className="form-grid form-grid--token">
               <label className="form-field">

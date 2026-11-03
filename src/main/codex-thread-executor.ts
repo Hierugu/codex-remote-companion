@@ -129,7 +129,7 @@ export class CodexThreadExecutor {
     const before = await this.store.readThread(threadId);
     const previousMessageCount = before.messages.length;
     const client = await this.getClient();
-    const cwd = process.cwd();
+    const cwd = before.cwd ?? process.cwd();
     let lastProgressStage: CodexProgressStage | null = null;
     const unsubscribe = client.onNotification((method, params) => {
       const nextStage = resolveProgressStage(method, params);

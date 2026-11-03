@@ -8,6 +8,7 @@
 - `codex` CLI installed and available on `PATH`.
 - Codex CLI authenticated and able to run `codex app-server --listen stdio://`.
 - Telegram bot token.
+- Your positive numeric Telegram user ID, entered with the bot token. Messages from other accounts are ignored.
 - Telegram forum group where the bot is an admin with topic-management permissions.
 
 ## Install Dependencies

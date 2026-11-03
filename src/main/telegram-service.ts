@@ -201,7 +201,10 @@ export class TelegramService {
     }
   }
 
-  async setBotToken(botToken: string): Promise<TelegramSetBotTokenResult> {
+  async setBotToken(botToken: string, ownerUserId?: string): Promise<TelegramSetBotTokenResult> {
+    if (ownerUserId !== undefined && !/^[1-9][0-9]*$/.test(ownerUserId)) {
+      throw new Error('Owner ID must be a positive numeric Telegram user ID.');
+    }
     let identity;
     try {
       identity = await this.provider.getIdentity(botToken);
@@ -211,6 +214,7 @@ export class TelegramService {
 
     const state = await this.configStore.writeBotToken({
       botToken,
+      ownerUserId,
       botUsername: identity.username,
       botUserId: identity.id
     });

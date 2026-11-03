@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, readFile, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, stat, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import test from 'node:test';
@@ -207,7 +207,7 @@ test('TelegramService masks bot token and stores forum-group project rows', asyn
   });
 
   const service = new TelegramService(configStore, backendRegistry, provider);
-  const tokenResult = await service.setBotToken('123456:ABCDefghijklmnopqrstuvwxyz_1234');
+  const tokenResult = await service.setBotToken('123456:ABCDefghijklmnopqrstuvwxyz_1234', '12345');
   const rowState = await service.upsertProjectSyncRow({
     forumGroupId: '-100123',
     forumGroupTitle: 'Core forum',
@@ -260,7 +260,7 @@ test('TelegramService sync creates missing topic bindings and returns exact summ
     source: 'local-companion-registry'
   });
   const project = await seedProjectThreads(backendRegistry);
-  await service.setBotToken('123456:ABCDefghijklmnopqrstuvwxyz_1234');
+  await service.setBotToken('123456:ABCDefghijklmnopqrstuvwxyz_1234', '12345');
   await service.upsertProjectSyncRow({
     forumGroupId: '-100555',
     forumGroupTitle: 'Project forum',
@@ -298,7 +298,7 @@ test('Telegram connection stays active for non-blocking binding noise after a su
     source: 'local-companion-registry'
   });
   const project = await seedProjectThreads(backendRegistry);
-  await service.setBotToken('123456:ABCDefghijklmnopqrstuvwxyz_1234');
+  await service.setBotToken('123456:ABCDefghijklmnopqrstuvwxyz_1234', '12345');
   await service.upsertProjectSyncRow({
     forumGroupId: '-100556',
     forumGroupTitle: 'Project forum',
@@ -328,7 +328,7 @@ test('TelegramService validates saved connection without provisioning topics', a
     source: 'local-companion-registry'
   });
   const project = await seedProjectThreads(backendRegistry);
-  await service.setBotToken('123456:ABCDefghijklmnopqrstuvwxyz_1234');
+  await service.setBotToken('123456:ABCDefghijklmnopqrstuvwxyz_1234', '12345');
   await service.upsertProjectSyncRow({
     forumGroupId: '-100557',
     forumGroupTitle: 'Saved title',
@@ -365,7 +365,7 @@ test('TelegramService validation records actionable issues without destructive s
     source: 'local-companion-registry'
   });
   const project = await seedProjectThreads(backendRegistry);
-  await service.setBotToken('123456:ABCDefghijklmnopqrstuvwxyz_1234');
+  await service.setBotToken('123456:ABCDefghijklmnopqrstuvwxyz_1234', '12345');
   await service.upsertProjectSyncRow({
     forumGroupId: '-100558',
     forumGroupTitle: 'Saved title',
@@ -394,7 +394,7 @@ test('TelegramService sets up one Telegram environment row and marks it ready', 
     source: 'local-companion-registry'
   });
   const project = await seedProjectThreads(backendRegistry);
-  await service.setBotToken('123456:ABCDefghijklmnopqrstuvwxyz_1234');
+  await service.setBotToken('123456:ABCDefghijklmnopqrstuvwxyz_1234', '12345');
 
   const result = await service.setupEnvironment({
     forumGroupId: '-100559',
@@ -425,7 +425,7 @@ test('TelegramService does not persist a new binding row when first setup fails'
     source: 'local-companion-registry'
   });
   const project = await seedProjectThreads(backendRegistry);
-  await service.setBotToken('123456:ABCDefghijklmnopqrstuvwxyz_1234');
+  await service.setBotToken('123456:ABCDefghijklmnopqrstuvwxyz_1234', '12345');
 
   await assert.rejects(
     () =>
@@ -455,7 +455,7 @@ test('TelegramService repair renames old topics and remaps threads to fresh topi
     source: 'local-companion-registry'
   });
   const project = await seedProjectThreads(backendRegistry);
-  await service.setBotToken('123456:ABCDefghijklmnopqrstuvwxyz_1234');
+  await service.setBotToken('123456:ABCDefghijklmnopqrstuvwxyz_1234', '12345');
   const setupResult = await service.setupEnvironment({
     forumGroupId: '-100560',
     forumGroupTitle: '-100560',
@@ -497,7 +497,7 @@ test('TelegramService repair increments Old prefix numbering on repeated repairs
     source: 'local-companion-registry'
   });
   const project = await seedProjectThreads(backendRegistry);
-  await service.setBotToken('123456:ABCDefghijklmnopqrstuvwxyz_1234');
+  await service.setBotToken('123456:ABCDefghijklmnopqrstuvwxyz_1234', '12345');
   const setupResult = await service.setupEnvironment({
     forumGroupId: '-100561',
     forumGroupTitle: '-100561',
@@ -541,7 +541,7 @@ test('TelegramService sync fails clearly when bot lacks rights or project has no
     name: 'Broken project'
   });
 
-  await service.setBotToken('123456:ABCDefghijklmnopqrstuvwxyz_1234');
+  await service.setBotToken('123456:ABCDefghijklmnopqrstuvwxyz_1234', '12345');
   await service.upsertProjectSyncRow({
     forumGroupId: '-100777',
     forumGroupTitle: 'Broken forum',
@@ -571,7 +571,7 @@ test('TelegramService normalizes inbound topic messages and sends outbound repli
     source: 'local-companion-registry'
   });
   const project = await seedProjectThreads(backendRegistry, 1);
-  await service.setBotToken('123456:ABCDefghijklmnopqrstuvwxyz_1234');
+  await service.setBotToken('123456:ABCDefghijklmnopqrstuvwxyz_1234', '12345');
   await service.upsertProjectSyncRow({
     forumGroupId: '-100888',
     forumGroupTitle: 'Reply forum',
@@ -620,7 +620,7 @@ test('TelegramService partial sync creates only missing topics and keeps existin
     source: 'local-companion-registry'
   });
   const project = await seedProjectThreads(backendRegistry, 2);
-  await service.setBotToken('123456:ABCDefghijklmnopqrstuvwxyz_1234');
+  await service.setBotToken('123456:ABCDefghijklmnopqrstuvwxyz_1234', '12345');
   await service.upsertProjectSyncRow({
     forumGroupId: '-100999',
     forumGroupTitle: 'Partial sync forum',
@@ -660,7 +660,7 @@ test('TelegramService closes archived topics and updates renamed topics on resyn
     source: 'local-companion-registry'
   });
   const project = await seedProjectThreads(backendRegistry, 2, true);
-  await service.setBotToken('123456:ABCDefghijklmnopqrstuvwxyz_1234');
+  await service.setBotToken('123456:ABCDefghijklmnopqrstuvwxyz_1234', '12345');
   await service.upsertProjectSyncRow({
     forumGroupId: '-100654',
     forumGroupTitle: 'Archive forum',
@@ -700,7 +700,7 @@ test('TelegramService ignores benign TOPIC_NOT_MODIFIED on reopen during rename 
     source: 'local-companion-registry'
   });
   const project = await seedProjectThreads(backendRegistry, 1);
-  await service.setBotToken('123456:ABCDefghijklmnopqrstuvwxyz_1234');
+  await service.setBotToken('123456:ABCDefghijklmnopqrstuvwxyz_1234', '12345');
   await service.upsertProjectSyncRow({
     forumGroupId: '-100321',
     forumGroupTitle: 'Rename forum',
@@ -739,7 +739,7 @@ test('TelegramService ignores benign TOPIC_NOT_MODIFIED on close during archive 
     source: 'local-companion-registry'
   });
   const project = await seedProjectThreads(backendRegistry, 1, true);
-  await service.setBotToken('123456:ABCDefghijklmnopqrstuvwxyz_1234');
+  await service.setBotToken('123456:ABCDefghijklmnopqrstuvwxyz_1234', '12345');
   await service.upsertProjectSyncRow({
     forumGroupId: '-100322',
     forumGroupTitle: 'Archive noop forum',
@@ -758,6 +758,7 @@ test('TelegramConfigStore repairs a config file with trailing garbage', async ()
   const configPath = join(tempRoot, 'telegram-config.json');
   const validState = {
     botToken: '123:token',
+    ownerUserId: '12345',
     botUsername: 'codex_remote_companion_bot',
     botUserId: '123',
     rows: [
@@ -789,4 +790,5 @@ test('TelegramConfigStore repairs a config file with trailing garbage', async ()
   assert.equal(state.rows.length, 1);
   assert.doesNotMatch(repairedRaw, /broken trailing bytes/);
   assert.deepEqual(JSON.parse(repairedRaw), validState);
+  assert.equal((await stat(configPath)).mode & 0o777, 0o600);
 });

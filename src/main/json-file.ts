@@ -84,8 +84,8 @@ export function parseJsonWithRecovery<T>(raw: string): {
 }
 
 export async function writeJsonAtomically(path: string, value: unknown): Promise<void> {
-  await mkdir(dirname(path), { recursive: true });
+  await mkdir(dirname(path), { recursive: true, mode: 0o700 });
   const tempPath = `${path}.${process.pid}.${Date.now()}.${randomUUID()}.tmp`;
-  await writeFile(tempPath, JSON.stringify(value, null, 2), 'utf8');
+  await writeFile(tempPath, JSON.stringify(value, null, 2), { encoding: 'utf8', mode: 0o600 });
   await rename(tempPath, path);
 }

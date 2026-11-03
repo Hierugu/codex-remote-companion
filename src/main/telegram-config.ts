@@ -14,6 +14,7 @@ import { getCompanionStatePath, getLegacyCompanionStatePath } from './companion-
 
 interface TelegramConfigFileShape {
   botToken: string | null;
+  ownerUserId: string | null;
   botUsername: string | null;
   botUserId: string | null;
   rows: TelegramProjectSyncRow[];
@@ -36,6 +37,7 @@ function normalizeProjectRow(
 function createDefaultState(): TelegramConfigFileShape {
   return {
     botToken: null,
+    ownerUserId: null,
     botUsername: null,
     botUserId: null,
     rows: [],
@@ -91,6 +93,7 @@ export class TelegramConfigStore {
     const { value, repaired } = parseJsonWithRecovery<TelegramConfigFileShape>(raw);
     const normalized: TelegramConfigFileShape = {
       botToken: value.botToken ?? null,
+      ownerUserId: value.ownerUserId ?? null,
       botUsername: value.botUsername ?? null,
       botUserId: value.botUserId ?? null,
       rows: Array.isArray(value.rows)
@@ -110,6 +113,7 @@ export class TelegramConfigStore {
 
   async writeBotToken(input: {
     botToken: string;
+    ownerUserId?: string;
     botUsername: string | null;
     botUserId: string | null;
   }): Promise<TelegramConfigFileShape> {
@@ -117,6 +121,7 @@ export class TelegramConfigStore {
     const nextState: TelegramConfigFileShape = {
       ...state,
       botToken: input.botToken,
+      ownerUserId: input.ownerUserId ?? state.ownerUserId,
       botUsername: input.botUsername,
       botUserId: input.botUserId,
       issue: null
@@ -131,6 +136,7 @@ export class TelegramConfigStore {
     const nextState: TelegramConfigFileShape = {
       ...state,
       botToken: null,
+      ownerUserId: null,
       botUsername: null,
       botUserId: null,
       lastUpdateId: null,
@@ -237,6 +243,7 @@ export class TelegramConfigStore {
   async getPollingConfig(): Promise<{
     botToken: string | null;
     botUserId: string | null;
+    ownerUserId: string | null;
     rows: TelegramProjectSyncRow[];
     lastUpdateId: number | null;
   }> {
@@ -244,6 +251,7 @@ export class TelegramConfigStore {
     return {
       botToken: state.botToken,
       botUserId: state.botUserId,
+      ownerUserId: state.ownerUserId,
       rows: state.rows,
       lastUpdateId: state.lastUpdateId
     };
@@ -262,6 +270,7 @@ export class TelegramConfigStore {
 
   toConnectionState(state: TelegramConfigFileShape): TelegramConnectionState {
     const hasToken = Boolean(state.botToken);
+    const hasOwner = Boolean(state.ownerUserId);
     const hasRows = state.rows.length > 0;
     const hasBlockingIssue = Boolean(state.issue) && !isNonBlockingTelegramIssue(state.issue);
     const rowIssue = state.rows.find((row) => row.lastIssue)?.lastIssue ?? null;
@@ -274,9 +283,22 @@ export class TelegramConfigStore {
         status: { tone: 'red', text: 'Not connected' },
         maskedBotToken: null,
         botUsername: null,
+        ownerUserId: state.ownerUserId,
         rows: state.rows,
         lastSync: state.lastSync,
         issue: displayIssue
+      };
+    }
+
+    if (!hasOwner) {
+      return {
+        status: { tone: 'yellow', text: 'Owner ID required' },
+        maskedBotToken: maskTelegramBotToken(state.botToken),
+        botUsername: state.botUsername,
+        ownerUserId: null,
+        rows: state.rows,
+        lastSync: state.lastSync,
+        issue: 'Set your numeric Telegram user ID before accepting messages.'
       };
     }
 
@@ -285,6 +307,7 @@ export class TelegramConfigStore {
         status: { tone: 'yellow', text: 'Needs attention' },
         maskedBotToken: maskTelegramBotToken(state.botToken),
         botUsername: state.botUsername,
+        ownerUserId: state.ownerUserId,
         rows: state.rows,
         lastSync: state.lastSync,
         issue: displayIssue
@@ -296,6 +319,7 @@ export class TelegramConfigStore {
         status: { tone: 'yellow', text: 'Setup required' },
         maskedBotToken: maskTelegramBotToken(state.botToken),
         botUsername: state.botUsername,
+        ownerUserId: state.ownerUserId,
         rows: state.rows,
         lastSync: state.lastSync,
         issue: displayIssue
@@ -306,6 +330,7 @@ export class TelegramConfigStore {
       status: { tone: 'green', text: 'Active' },
       maskedBotToken: maskTelegramBotToken(state.botToken),
       botUsername: state.botUsername,
+      ownerUserId: state.ownerUserId,
       rows: state.rows,
       lastSync: state.lastSync,
       issue: displayIssue

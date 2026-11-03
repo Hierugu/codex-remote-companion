@@ -114,8 +114,8 @@ const api: CodexDesktopApi = {
     ipcRenderer.invoke('telegram:validate-connection') as Promise<TelegramConnectionState>,
   checkTelegramEnvironment: (rowId: string) =>
     ipcRenderer.invoke('telegram:check-environment', rowId) as Promise<TelegramConnectionState>,
-  setTelegramBotToken: (token: string) =>
-    ipcRenderer.invoke('telegram:set-bot-token', token) as Promise<TelegramSetBotTokenResult>,
+  setTelegramBotToken: (token: string, ownerUserId: string) =>
+    ipcRenderer.invoke('telegram:set-bot-token', token, ownerUserId) as Promise<TelegramSetBotTokenResult>,
   removeTelegramBotToken: () =>
     ipcRenderer.invoke('telegram:remove-bot-token') as Promise<TelegramRemoveBotTokenResult>,
   upsertTelegramProjectSyncRow: (input: TelegramProjectSyncRowInput) =>
