@@ -21,6 +21,11 @@ interface ThreadExecutor {
   ): Promise<CodexThreadExecutionResult>;
 }
 
+interface OutboundMirror {
+  suspendThread(threadId: string): void;
+  resumeThread(threadId: string): Promise<void>;
+}
+
 export interface TelegramPollingCycleResult {
   processed: number;
   skipped: number;
@@ -49,7 +54,8 @@ export class TelegramInboundPoller {
     private readonly executor: ThreadExecutor,
     private readonly slashCommands: TelegramSlashCommandService,
     private readonly provider: TelegramBotProvider,
-    private readonly pollIntervalMs = 500
+    private readonly pollIntervalMs = 500,
+    private readonly outboundMirror?: OutboundMirror
   ) {}
 
   isRunning(): boolean {
@@ -128,21 +134,26 @@ export class TelegramInboundPoller {
           replyToMessageId: message.messageId
         });
 
-        await this.controlPlane.handleInboundEvent(inboundEvent);
-        const execution = await this.executor.resumeAndRun(inboundEvent.threadId, inboundEvent.text, {
-          onProgress: async (progressText) => {
-            await this.telegramService.editThreadReply({
-              projectThreadId: inboundEvent.projectThreadId!,
-              messageId: ackMessage.messageId,
-              text: progressText
-            });
-          }
-        });
-        await this.telegramService.sendThreadReply({
-          projectThreadId: inboundEvent.projectThreadId,
-          text: execution.assistantReply,
-          replyToMessageId: message.messageId
-        });
+        this.outboundMirror?.suspendThread(inboundEvent.threadId);
+        try {
+          await this.controlPlane.handleInboundEvent(inboundEvent);
+          const execution = await this.executor.resumeAndRun(inboundEvent.threadId, inboundEvent.text, {
+            onProgress: async (progressText) => {
+              await this.telegramService.editThreadReply({
+                projectThreadId: inboundEvent.projectThreadId!,
+                messageId: ackMessage.messageId,
+                text: progressText
+              });
+            }
+          });
+          await this.telegramService.sendThreadReply({
+            projectThreadId: inboundEvent.projectThreadId,
+            text: execution.assistantReply,
+            replyToMessageId: message.messageId
+          });
+        } finally {
+          await this.outboundMirror?.resumeThread(inboundEvent.threadId);
+        }
 
         processed += 1;
         await this.configStore.recordIssue(null);

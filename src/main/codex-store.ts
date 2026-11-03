@@ -334,7 +334,8 @@ function extractMessageFromRolloutLine(line: unknown): CodexThreadMessage | null
           ? role
           : 'unknown',
         text,
-        sourceType: 'response_item.message'
+        sourceType: 'response_item.message',
+        phase: typeof payload.phase === 'string' ? payload.phase : null
       };
     }
   }

@@ -108,6 +108,7 @@ export interface CodexThreadMessage {
   role: CodexThreadRole;
   text: string;
   sourceType: string;
+  phase?: string | null;
 }
 
 export interface CodexThreadRecord {

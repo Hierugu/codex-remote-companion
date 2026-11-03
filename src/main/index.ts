@@ -33,6 +33,7 @@ import { TelegramService } from './telegram-service';
 import { CodexThreadExecutor } from './codex-thread-executor';
 import { CodexAppServerClient } from './app-server-client';
 import { TelegramInboundPoller } from './telegram-poller';
+import { createCodexOutboundPoller } from './codex-outbound-poller';
 import {
   RemoteExecutionSettingsService,
   RemoteExecutionSettingsStore
@@ -69,6 +70,7 @@ const controlPlane = new ControlPlaneBackend({
   backendRegistry,
   transport: new InProcessCompanionTransport(runtimeController)
 });
+const codexOutboundPoller = createCodexOutboundPoller(codexStore, backendRegistry, telegramService);
 const telegramPoller = new TelegramInboundPoller(
   telegramConfigStore,
   telegramService,
@@ -76,7 +78,8 @@ const telegramPoller = new TelegramInboundPoller(
   codexExecutor,
   telegramSlashCommands,
   telegramProvider,
-  TELEGRAM_POLL_INTERVAL_MS
+  TELEGRAM_POLL_INTERVAL_MS,
+  codexOutboundPoller
 );
 const productApi = new ProductApiService({
   getRuntimeState,
@@ -329,6 +332,7 @@ ipcMain.handle(
   'runtime:start-server',
   async (): Promise<RuntimeServerStartResult> => {
     await runtimeController.start();
+    await codexOutboundPoller.start();
     telegramPoller.start();
     const state = getRuntimeState();
     broadcastRuntimeState();
@@ -340,6 +344,7 @@ ipcMain.handle(
   'runtime:stop-server',
   async (): Promise<RuntimeServerStartResult> => {
     await telegramPoller.stop();
+    await codexOutboundPoller.stop();
     await codexExecutor.dispose();
     await runtimeController.stop();
     const state = getRuntimeState();
@@ -368,5 +373,6 @@ app.on('window-all-closed', () => {
 
 app.on('before-quit', () => {
   void telegramPoller.stop();
+  void codexOutboundPoller.stop();
   void codexExecutor.dispose();
 });
