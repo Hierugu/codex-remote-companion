@@ -27,20 +27,23 @@ async function fixture(chatIds = ['-1001']) {
   }];
   const store = { listProjectThreadOptions: async () => threads };
   const calls: string[] = [];
+  const edits: Array<{ chatId: string; topicId: number; title: string }> = [];
   let nextTopicId = 100;
   const provider = {
     createForumTopic: async (_token: string, chatId: string, _title: string) => {
       calls.push(chatId);
       return { messageThreadId: nextTopicId++, name: 'Forked chat' };
     },
-    editForumTopic: async () => undefined
+    editForumTopic: async (_token: string, chatId: string, topicId: number, title: string) => {
+      edits.push({ chatId, topicId, title });
+    }
   };
   const statePath = join(root, 'jobs.json');
   const gate = new TelegramTopicCreationGate();
   const create = (registryValue: any = registry) => new TelegramTopicAutoSync(
     config as any, store as any, registryValue, provider as any, gate, statePath, () => undefined
   );
-  return { registry, config, threads, provider, calls, statePath, create };
+  return { registry, config, threads, provider, calls, edits, statePath, create };
 }
 
 test('auto-sync links a new chat once and supports two groups for one project', async () => {
@@ -56,6 +59,41 @@ test('auto-sync links a new chat once and supports two groups for one project', 
   assert.equal(bindings.length, 2);
   assert.equal(state.projectThreads.filter((item) => item.id === 'project-thread:thread-1').length, 1);
   assert.deepEqual((await sync.getStatus()).map((row) => row.pending), [0, 0]);
+});
+
+test('auto-sync renames linked topics in both groups without creating new topics', async () => {
+  const f = await fixture(['-1001', '-1002']);
+  const sync = f.create();
+  await sync.runOnce();
+  await sync.runOnce();
+  f.threads[0]!.title = 'Renamed Codex chat';
+  await sync.runOnce();
+  await sync.runOnce();
+  assert.deepEqual(f.calls, ['-1001', '-1002']);
+  assert.deepEqual(f.edits, [
+    { chatId: '-1001', topicId: 100, title: 'Renamed Codex chat' },
+    { chatId: '-1002', topicId: 101, title: 'Renamed Codex chat' }
+  ]);
+  const state = await f.registry.readState();
+  assert.deepEqual(state.platformBindings.map((item) => item.surfaceLabel), [
+    'Renamed Codex chat', 'Renamed Codex chat'
+  ]);
+  assert.equal(state.projectThreads[0]?.title, 'Renamed Codex chat');
+});
+
+test('a rate limit pauses further topic rename attempts', async () => {
+  const f = await fixture();
+  const sync = f.create();
+  await sync.runOnce();
+  f.threads[0]!.title = 'Renamed Codex chat';
+  f.provider.editForumTopic = async (_token, chatId, topicId, title) => {
+    f.edits.push({ chatId, topicId, title });
+    throw new TelegramApiError('Too Many Requests', 429, 40);
+  };
+  await sync.runOnce();
+  await sync.runOnce();
+  assert.equal(f.edits.length, 1);
+  assert.equal((await f.registry.readState()).platformBindings[0]?.surfaceLabel, 'Forked chat');
 });
 
 test('429 leaves the topic queued and does not make an immediate second request', async () => {
