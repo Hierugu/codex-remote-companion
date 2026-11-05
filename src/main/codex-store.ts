@@ -122,7 +122,17 @@ function parseJsonLines<T>(raw: string): T[] {
     .split('\n')
     .map((line) => line.trim())
     .filter(Boolean)
-    .map((line) => JSON.parse(line) as T);
+    .map((line) => parseJsonLine<T>(line))
+    .filter((value): value is T => value !== null);
+}
+
+function parseJsonLine<T>(line: string): T | null {
+  try {
+    return JSON.parse(line) as T;
+  } catch (error) {
+    if (error instanceof SyntaxError) return null;
+    throw error;
+  }
 }
 
 function decodeJwtPayload(token: string | null | undefined): Record<string, unknown> | null {
@@ -466,7 +476,8 @@ async function deriveThreadTitleFromRolloutPath(
         continue;
       }
 
-      const parsed = JSON.parse(line) as unknown;
+      const parsed = parseJsonLine<unknown>(line);
+      if (parsed === null) continue;
       const message = extractMessageFromRolloutLine(parsed);
       if (
         message &&
@@ -490,12 +501,12 @@ function parseRolloutMeta(rawFirstLine: string): RolloutMeta | null {
     return null;
   }
 
-  const parsed = JSON.parse(rawFirstLine) as {
+  const parsed = parseJsonLine<{
     type?: string;
     payload?: Record<string, unknown>;
-  };
+  }>(rawFirstLine);
 
-  if (parsed.type !== 'session_meta' || !parsed.payload) {
+  if (parsed?.type !== 'session_meta' || !parsed.payload) {
     return null;
   }
 
@@ -603,6 +614,7 @@ async function readJsonlTail(path: string, maxBytes = 256 * 1024): Promise<strin
 export class CodexLocalStore {
   private readonly codexHome: string;
   private snapshotRolloutCache: SnapshotRolloutCacheEntry | null = null;
+  private globalStateCache: GlobalStateShape | null = null;
 
   constructor(codexHome = join(homedir(), '.codex')) {
     this.codexHome = codexHome;
@@ -821,8 +833,22 @@ export class CodexLocalStore {
   }
 
   private async readGlobalState(): Promise<GlobalStateShape> {
-    const raw = await readFile(join(this.codexHome, '.codex-global-state.json'), 'utf8');
-    return JSON.parse(raw) as GlobalStateShape;
+    const path = join(this.codexHome, '.codex-global-state.json');
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      const raw = await readFile(path, 'utf8');
+      try {
+        const state = JSON.parse(raw) as GlobalStateShape;
+        this.globalStateCache = state;
+        return state;
+      } catch (error) {
+        if (!(error instanceof SyntaxError)) throw error;
+        if (attempt < 4) {
+          await new Promise<void>((resolve) => setTimeout(resolve, 80));
+        }
+      }
+    }
+    console.warn('Codex global state is temporarily invalid; using the last valid snapshot.');
+    return this.globalStateCache ?? {};
   }
 
   private async readSessionIndex(): Promise<SessionIndexEntry[]> {
@@ -994,10 +1020,11 @@ export class CodexLocalStore {
           continue;
         }
 
-        const parsed = JSON.parse(line) as {
+        const parsed = parseJsonLine<{
           type?: unknown;
           payload?: Record<string, unknown>;
-        };
+        }>(line);
+        if (!parsed) continue;
 
         if (parsed.type === 'turn_context' && parsed.payload) {
           signals.permissionMode = normalizePermissionMode(
@@ -1091,11 +1118,12 @@ export class CodexLocalStore {
         continue;
       }
 
-      const parsed = JSON.parse(line) as {
+      const parsed = parseJsonLine<{
         timestamp?: unknown;
         type?: unknown;
         payload?: Record<string, unknown>;
-      };
+      }>(line);
+      if (!parsed) continue;
 
       if (
         parsed.type === 'event_msg' &&

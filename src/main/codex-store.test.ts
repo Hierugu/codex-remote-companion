@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, utimes, writeFile } from 'node:fs/promises';
+import { appendFile, mkdtemp, mkdir, utimes, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
@@ -175,6 +175,46 @@ test('CodexLocalStore reads environment snapshot from researched local files', a
   assert.deepEqual(snapshot.activeWorkspaceRoots, ['/workspace/a']);
   assert.equal(snapshot.threadCount, 1);
   assert.equal(snapshot.archivedThreadCount, 1);
+});
+
+test('CodexLocalStore retries a partially written global state file', async () => {
+  const codexHome = await createFixtureCodexHome();
+  const path = join(codexHome, '.codex-global-state.json');
+  await writeFile(path, '{"active-workspace-roots":["/workspace/a');
+  const repair = new Promise<void>((resolve) => {
+    setTimeout(() => {
+      void writeFile(path, JSON.stringify({ 'active-workspace-roots': ['/workspace/recovered'] }))
+        .then(resolve);
+    }, 30);
+  });
+  const snapshot = await new CodexLocalStore(codexHome).getEnvironmentSnapshot();
+  await repair;
+  assert.deepEqual(snapshot.activeWorkspaceRoots, ['/workspace/recovered']);
+});
+
+test('CodexLocalStore keeps its last valid global state if the next read stays invalid', async () => {
+  const codexHome = await createFixtureCodexHome();
+  const store = new CodexLocalStore(codexHome);
+  await store.getEnvironmentSnapshot();
+  await writeFile(join(codexHome, '.codex-global-state.json'), '{"broken":"unterminated');
+  const snapshot = await store.getEnvironmentSnapshot();
+  assert.deepEqual(snapshot.savedWorkspaceRoots, ['/workspace/a', '/workspace/b']);
+});
+
+test('CodexLocalStore ignores an unfinished JSONL record while reading a live chat', async () => {
+  const codexHome = await createFixtureCodexHome();
+  await appendFile(
+    join(codexHome, 'sessions', '2026', '04', '19', 'rollout-live.jsonl'),
+    '\n{"type":"compacted","payload":{"message":"unterminated'
+  );
+  const store = new CodexLocalStore(codexHome);
+  const snapshot = await store.getEnvironmentSnapshot();
+  const thread = await store.readThread('thr_live');
+  assert.equal(snapshot.permissionMode, 'Default permissions');
+  assert.equal(snapshot.primaryRateLimitRemainingPercent, 89);
+  assert.deepEqual(thread.messages.map((message) => message.text), [
+    'Hello from user', 'Hello from assistant'
+  ]);
 });
 
 test('CodexLocalStore prefers freshest token_count from recent rollout activity for rate limits', async () => {
