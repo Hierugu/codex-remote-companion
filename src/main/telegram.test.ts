@@ -485,7 +485,7 @@ test('TelegramService resumes a partially created group without duplicate topics
   assert.equal(provider.createdTopics.length, 2);
 });
 
-test('Telegram provider waits for retry_after and repeats a rate-limited call', async () => {
+test('Telegram provider does not repeat a rate-limited topic creation call', async () => {
   const originalFetch = globalThis.fetch;
   let calls = 0;
   globalThis.fetch = async () => {
@@ -501,9 +501,11 @@ test('Telegram provider waits for retry_after and repeats a rate-limited call', 
   };
 
   try {
-    const topic = await new HttpTelegramBotProvider().createForumTopic('123:token', '-100405', 'Topic');
-    assert.equal(topic.messageThreadId, 42);
-    assert.equal(calls, 3);
+    await assert.rejects(
+      new HttpTelegramBotProvider().createForumTopic('123:token', '-100405', 'Topic'),
+      /Too Many Requests/
+    );
+    assert.equal(calls, 1);
   } finally {
     globalThis.fetch = originalFetch;
   }
@@ -529,6 +531,24 @@ test('Telegram provider retries a transient network failure when editing a reply
     });
     assert.equal(result.text, 'finished');
     assert.equal(calls, 2);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('Telegram provider does not retry an uncertain topic creation network failure', async () => {
+  const originalFetch = globalThis.fetch;
+  let calls = 0;
+  globalThis.fetch = async () => {
+    calls += 1;
+    throw new TypeError('fetch failed');
+  };
+  try {
+    await assert.rejects(
+      new HttpTelegramBotProvider().createForumTopic('123:token', '-100405', 'Topic'),
+      /fetch failed/
+    );
+    assert.equal(calls, 1);
   } finally {
     globalThis.fetch = originalFetch;
   }

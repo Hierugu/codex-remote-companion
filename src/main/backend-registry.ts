@@ -136,6 +136,71 @@ export class PersistentBackendRegistry {
     return this.upsertEntity('codexThreadBindings', record);
   }
 
+  async linkCodexThreadToTelegramTopic(input: {
+    projectId: string;
+    codexThreadId: string;
+    machineId: string;
+    title: string;
+    archived: boolean;
+    chatId: string;
+    messageThreadId: number;
+  }): Promise<BackendPlatformBindingRecord> {
+    const state = await this.readState();
+    const existingCodexBinding = state.codexThreadBindings.find((record) =>
+      record.codexThreadId === input.codexThreadId
+    );
+    const projectThreadId = existingCodexBinding?.projectThreadId ?? `project-thread:${input.codexThreadId}`;
+    const existing = state.platformBindings.find((binding) =>
+      binding.platform === 'telegram' &&
+      binding.bindingType === 'thread-surface' &&
+      binding.projectThreadId === projectThreadId &&
+      binding.surfaceId.startsWith(`telegram:topic:${input.chatId}:`)
+    );
+    if (existing) return existing;
+
+    const projectThread = withTimestamps<BackendProjectThreadRecord>(
+      state.projectThreads.find((record) => record.id === projectThreadId),
+      {
+        id: projectThreadId,
+        projectId: input.projectId,
+        title: input.title,
+        archived: input.archived
+      }
+    );
+    const codexBindingId = existingCodexBinding?.id ?? `codex-binding:${input.codexThreadId}`;
+    const codexBinding = withTimestamps<BackendCodexThreadBindingRecord>(
+      state.codexThreadBindings.find((record) => record.id === codexBindingId),
+      {
+        id: codexBindingId,
+        projectThreadId,
+        machineId: input.machineId,
+        codexThreadId: input.codexThreadId
+      }
+    );
+    const bindingId = `telegram-thread:${projectThreadId}:${input.chatId}`;
+    const platformBinding = withTimestamps<BackendPlatformBindingRecord>(
+      state.platformBindings.find((record) => record.id === bindingId),
+      {
+        id: bindingId,
+        platform: 'telegram',
+        bindingType: 'thread-surface',
+        projectId: input.projectId,
+        projectThreadId,
+        surfaceId: `telegram:topic:${input.chatId}:${input.messageThreadId}`,
+        surfaceLabel: input.title
+      }
+    );
+
+    await this.writeState({
+      ...state,
+      updatedAt: nowIso(),
+      projectThreads: upsertById(state.projectThreads, projectThread),
+      codexThreadBindings: upsertById(state.codexThreadBindings, codexBinding),
+      platformBindings: upsertById(state.platformBindings, platformBinding)
+    });
+    return platformBinding;
+  }
+
   async upsertActiveThreadState(
     record: Omit<BackendActiveThreadStateRecord, 'createdAt' | 'updatedAt'>
   ): Promise<BackendActiveThreadStateRecord> {

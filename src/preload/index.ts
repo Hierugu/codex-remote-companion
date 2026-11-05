@@ -34,6 +34,7 @@ import type {
   TelegramRepairResult,
   TelegramSetBotTokenResult,
   TelegramSyncResult,
+  TelegramTopicSyncRowStatus,
   TriggerSyncResult,
   UpsertActiveThreadStateInput
 } from '@shared/contracts';
@@ -135,6 +136,12 @@ const api: CodexDesktopApi = {
     ipcRenderer.invoke('telegram:repair-environment', rowId) as Promise<TelegramRepairResult>,
   syncTelegram: () =>
     ipcRenderer.invoke('telegram:sync') as Promise<TelegramSyncResult>,
+  getTelegramTopicSyncStatus: () =>
+    ipcRenderer.invoke('telegram:topic-sync-status') as Promise<TelegramTopicSyncRowStatus[]>,
+  retryTelegramTopic: (rowId, codexThreadId) =>
+    ipcRenderer.invoke('telegram:retry-topic', rowId, codexThreadId) as Promise<void>,
+  attachTelegramTopic: (rowId, codexThreadId, topicId) =>
+    ipcRenderer.invoke('telegram:attach-topic', rowId, codexThreadId, topicId) as Promise<void>,
   onRuntimeStateChanged: (listener) => {
     const wrappedListener = (
       _event: Electron.IpcRendererEvent,

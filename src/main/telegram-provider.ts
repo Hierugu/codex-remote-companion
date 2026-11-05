@@ -82,10 +82,22 @@ export interface TelegramBotProvider {
   editMessage(botToken: string, input: TelegramEditMessageInput): Promise<TelegramSendMessageResult>;
 }
 
+export class TelegramApiError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+    readonly retryAfterSeconds: number | null
+  ) {
+    super(message);
+    this.name = 'TelegramApiError';
+  }
+}
+
 async function callTelegramApi<T>(
   botToken: string,
   method: string,
-  payload: Record<string, unknown>
+  payload: Record<string, unknown>,
+  options: { retryRateLimits?: boolean; retryTransientErrors?: boolean } = {}
 ): Promise<T> {
   for (let attempt = 0; attempt < 5; attempt += 1) {
     let response: Response;
@@ -99,9 +111,9 @@ async function callTelegramApi<T>(
         signal: AbortSignal.timeout(15000)
       });
     } catch (error) {
-      if (attempt === 4) {
+      if (attempt === 4 || options.retryTransientErrors === false) {
         const detail = error instanceof Error ? error.message : 'Unknown network error';
-        throw new Error(`Telegram API ${method} network error after 5 attempts: ${detail}`);
+        throw new Error(`Telegram API ${method} network error: ${detail}`);
       }
       await new Promise<void>((resolve) => setTimeout(resolve, 500 * 2 ** attempt));
       continue;
@@ -123,7 +135,7 @@ async function callTelegramApi<T>(
       data.parameters?.retry_after ??
       Number(data.description?.match(/retry after (\d+)/i)?.[1] ?? NaN);
     if (
-      attempt < 4 &&
+      attempt < 4 && options.retryRateLimits !== false &&
       (response.status === 429 || data.error_code === 429) &&
       typeof retryAfter === 'number' &&
       Number.isFinite(retryAfter) &&
@@ -133,12 +145,16 @@ async function callTelegramApi<T>(
       continue;
     }
 
-    if (attempt < 4 && response.status >= 500) {
+    if (attempt < 4 && options.retryTransientErrors !== false && response.status >= 500) {
       await new Promise<void>((resolve) => setTimeout(resolve, 500 * 2 ** attempt));
       continue;
     }
 
-    throw new Error(data.description ?? `Telegram API call ${method} failed.`);
+    throw new TelegramApiError(
+      data.description ?? `Telegram API call ${method} failed.`,
+      data.error_code ?? response.status,
+      Number.isFinite(retryAfter) ? retryAfter : null
+    );
   }
 
   throw new Error(`Telegram API call ${method} exceeded retry limit.`);
@@ -252,7 +268,7 @@ export class HttpTelegramBotProvider implements TelegramBotProvider {
     }>(botToken, 'createForumTopic', {
       chat_id: chatId,
       name
-    });
+    }, { retryRateLimits: false, retryTransientErrors: false });
 
     return {
       messageThreadId: result.message_thread_id,

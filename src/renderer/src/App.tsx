@@ -11,7 +11,8 @@ import type {
   RuntimeBootstrapState,
   StartupSettingsState,
   StatusBadgeState,
-  TelegramConnectionState
+  TelegramConnectionState,
+  TelegramTopicSyncRowStatus
 } from '@shared/contracts';
 
 import { SectionCard } from './components/SectionCard';
@@ -718,6 +719,9 @@ export default function App() {
     null
   );
   const [telegramError, setTelegramError] = useState<string | null>(null);
+  const [topicSyncRows, setTopicSyncRows] = useState<TelegramTopicSyncRowStatus[]>([]);
+  const [topicAttachIds, setTopicAttachIds] = useState<Record<string, string>>({});
+  const [topicActionKey, setTopicActionKey] = useState<string | null>(null);
   const [telegramRowHealthFeedback, setTelegramRowHealthFeedback] = useState<
     Record<string, TelegramRowHealthFeedback>
   >({});
@@ -860,6 +864,52 @@ export default function App() {
       })();
     }
   }, [telegramDraftRows, projectThreadCache, projectThreadLoadingIds, projectOptions]);
+
+  useEffect(() => {
+    if (screen !== 'messaging-settings' || !window.codexDesktop) return;
+    let active = true;
+    const refresh = () => {
+      void window.codexDesktop.getTelegramTopicSyncStatus()
+        .then((rows) => { if (active) setTopicSyncRows(rows); })
+        .catch(() => undefined);
+    };
+    refresh();
+    const timer = setInterval(refresh, 10_000);
+    return () => { active = false; clearInterval(timer); };
+  }, [screen]);
+
+  async function handleTopicRetry(rowId: string, threadId: string) {
+    const key = `${rowId}:${threadId}`;
+    setTopicActionKey(key);
+    setTelegramError(null);
+    try {
+      await window.codexDesktop.retryTelegramTopic(rowId, threadId);
+      setTopicSyncRows(await window.codexDesktop.getTelegramTopicSyncStatus());
+    } catch (error) {
+      setTelegramError(getErrorMessage(error));
+    } finally {
+      setTopicActionKey(null);
+    }
+  }
+
+  async function handleTopicAttach(rowId: string, threadId: string) {
+    const key = `${rowId}:${threadId}`;
+    const topicId = Number(topicAttachIds[key]);
+    if (!Number.isSafeInteger(topicId) || topicId <= 0) {
+      setTelegramError('Enter a valid Telegram topic ID.');
+      return;
+    }
+    setTopicActionKey(key);
+    setTelegramError(null);
+    try {
+      await window.codexDesktop.attachTelegramTopic(rowId, threadId, topicId);
+      setTopicSyncRows(await window.codexDesktop.getTelegramTopicSyncStatus());
+    } catch (error) {
+      setTelegramError(getErrorMessage(error));
+    } finally {
+      setTopicActionKey(null);
+    }
+  }
 
   useEffect(() => {
     if (!bootReady || !window.codexDesktop || screen !== 'dashboard') {
@@ -1540,6 +1590,7 @@ export default function App() {
 
             <div className="binding-list">
               {telegramDraftRows.map((row) => {
+                const topicSync = topicSyncRows.find((item) => item.rowId === row.rowId);
                 const rowStatus = getTelegramRowStatus(
                   row,
                   telegramConnection,
@@ -1662,6 +1713,45 @@ export default function App() {
                       </div>
                     ) : row.lastIssue ? (
                       <div className="inline-warning">{row.lastIssue}</div>
+                    ) : null}
+                    {rowLocked ? (
+                      <div className="topic-sync-panel">
+                        <span>New chat topics: automatic</span>
+                        {topicSync?.pending ? <span> · {topicSync.pending} pending</span> : null}
+                        {topicSync?.lastError && !topicSync.needsReview.length ? (
+                          <div className="inline-warning">{topicSync.lastError}</div>
+                        ) : null}
+                        {topicSync?.needsReview.map((issue) => {
+                          const key = `${issue.rowId}:${issue.codexThreadId}`;
+                          return (
+                            <div className="topic-sync-issue" key={key}>
+                              <strong>{issue.title}</strong>
+                              <p>{issue.reason}</p>
+                              <p>Check Telegram first. Retrying may create a duplicate topic.</p>
+                              <div className="topic-sync-issue__actions">
+                                <input
+                                  type="number"
+                                  min="1"
+                                  placeholder="Existing topic ID"
+                                  value={topicAttachIds[key] ?? ''}
+                                  onChange={(event) => setTopicAttachIds((current) => ({
+                                    ...current, [key]: event.target.value
+                                  }))}
+                                />
+                                <button type="button" className="text-button" disabled={topicActionKey !== null}
+                                  onClick={() => void handleTopicAttach(issue.rowId, issue.codexThreadId)}>
+                                  Attach topic
+                                </button>
+                                <button type="button" className="text-button text-button--danger"
+                                  disabled={topicActionKey !== null}
+                                  onClick={() => void handleTopicRetry(issue.rowId, issue.codexThreadId)}>
+                                  Create another topic
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
                     ) : null}
                     <div className="binding-row__footer">
                       <button

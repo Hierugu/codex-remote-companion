@@ -31,7 +31,7 @@
     "test:phase3": "tsx --test src/main/runtime.test.ts src/main/codex-store.test.ts src/main/control-plane.test.ts",
     "test:phase4": "tsx --test src/main/runtime.test.ts src/main/codex-store.test.ts src/main/control-plane.test.ts src/main/backend-registry.test.ts",
     "test:phase5": "tsx --test src/main/runtime.test.ts src/main/codex-store.test.ts src/main/control-plane.test.ts src/main/backend-registry.test.ts src/main/product-api.test.ts",
-    "test:phase6": "tsx --test src/main/runtime.test.ts src/main/codex-store.test.ts src/main/codex-outbound-poller.test.ts src/main/control-plane.test.ts src/main/backend-registry.test.ts src/main/product-api.test.ts src/main/telegram.test.ts src/main/telegram-poller.test.ts",
+    "test:phase6": "tsx --test src/main/runtime.test.ts src/main/codex-store.test.ts src/main/codex-outbound-poller.test.ts src/main/control-plane.test.ts src/main/backend-registry.test.ts src/main/product-api.test.ts src/main/telegram.test.ts src/main/telegram-poller.test.ts src/main/telegram-topic-auto-sync.test.ts",
     "test:ui": "tsx --test src/renderer/src/App.ui.test.tsx",
     "smoke:phase2": "tsx src/main/phase2-smoke.ts",
     "smoke:phase2-turn": "tsx src/main/phase2-turn-smoke.ts",

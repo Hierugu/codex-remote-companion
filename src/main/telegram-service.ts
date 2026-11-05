@@ -19,6 +19,7 @@ import type {
   TelegramSendMessageResult,
   TelegramSendMessageInput
 } from './telegram-provider';
+import { TelegramTopicCreationGate } from './telegram-topic-gate';
 
 function buildProjectSurfaceId(chatId: string): string {
   return `telegram:chat:${chatId}`;
@@ -126,7 +127,8 @@ export class TelegramService {
   constructor(
     private readonly configStore: TelegramConfigStore,
     private readonly backendRegistry: PersistentBackendRegistry,
-    private readonly provider: TelegramBotProvider
+    private readonly provider: TelegramBotProvider,
+    private readonly topicGate = new TelegramTopicCreationGate()
   ) {}
 
   async getConnectionState(): Promise<TelegramConnectionState> {
@@ -425,7 +427,9 @@ export class TelegramService {
           projectThread.title
         );
         await this.backendRegistry.upsertPlatformBinding({
-          id: `telegram-thread:${projectThread.id}`,
+          id: existingActiveBindings.find((binding) =>
+            binding.projectThreadId === projectThread.id
+          )?.id ?? `telegram-thread:${projectThread.id}:${row.forumGroupId}`,
           platform: 'telegram',
           bindingType: 'thread-surface',
           projectId: projectThread.projectId,
@@ -574,21 +578,52 @@ export class TelegramService {
       );
 
       if (!existingBinding) {
-        const topic = await this.provider.createForumTopic(
-          input.botToken,
-          input.chatId,
-          projectThread.title
-        );
+        const createdTopic = await this.topicGate.run(
+          `${input.chatId}:${projectThread.id}`,
+          async () => {
+            const current = await this.backendRegistry.readState();
+            const currentBinding = current.platformBindings.find((binding) =>
+              binding.projectThreadId === projectThread.id &&
+              isTelegramThreadBindingForChat(binding, input.chatId)
+            );
+            if (currentBinding) return null;
 
-        await this.backendRegistry.upsertPlatformBinding({
-          id: `telegram-thread:${projectThread.id}`,
-          platform: 'telegram',
-          bindingType: 'thread-surface',
-          projectId: projectThread.projectId,
-          projectThreadId: projectThread.id,
-          surfaceId: buildThreadSurfaceId(input.chatId, topic.messageThreadId),
-          surfaceLabel: topic.name
-        });
+            const topic = await this.provider.createForumTopic(
+              input.botToken,
+              input.chatId,
+              projectThread.title.slice(0, 128)
+            );
+            const codexBinding = current.codexThreadBindings.find(
+              (binding) => binding.projectThreadId === projectThread.id
+            );
+            if (codexBinding) {
+              await this.backendRegistry.linkCodexThreadToTelegramTopic({
+                projectId: projectThread.projectId,
+                codexThreadId: codexBinding.codexThreadId,
+                machineId: codexBinding.machineId,
+                title: projectThread.title,
+                archived: projectThread.archived,
+                chatId: input.chatId,
+                messageThreadId: topic.messageThreadId
+              });
+            } else {
+              await this.backendRegistry.upsertPlatformBinding({
+                id: `telegram-thread:${projectThread.id}:${input.chatId}`,
+                platform: 'telegram',
+                bindingType: 'thread-surface',
+                projectId: projectThread.projectId,
+                projectThreadId: projectThread.id,
+                surfaceId: buildThreadSurfaceId(input.chatId, topic.messageThreadId),
+                surfaceLabel: topic.name
+              });
+            }
+            return topic;
+          }
+        );
+        if (!createdTopic) {
+          alreadyLinked += 1;
+          continue;
+        }
         created += 1;
 
         if (projectThread.archived) {
@@ -596,7 +631,7 @@ export class TelegramService {
             this.provider,
             input.botToken,
             input.chatId,
-            topic.messageThreadId
+            createdTopic.messageThreadId
           );
           updated += 1;
         }

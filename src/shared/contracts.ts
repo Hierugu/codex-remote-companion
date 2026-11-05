@@ -316,6 +316,20 @@ export interface BackendRegistrySummary {
   syncSnapshotCount: number;
 }
 
+export interface TelegramTopicSyncIssue {
+  rowId: string;
+  codexThreadId: string;
+  title: string;
+  reason: string;
+}
+
+export interface TelegramTopicSyncRowStatus {
+  rowId: string;
+  pending: number;
+  needsReview: TelegramTopicSyncIssue[];
+  lastError: string | null;
+}
+
 export interface ControlPlaneStatus {
   installIdentity: InstallIdentityRecord | null;
   lastDispatch: SyncDispatchRecord | null;
@@ -541,6 +555,9 @@ export interface CodexDesktopApi {
   setupTelegramEnvironment: (input: TelegramProjectSyncRowInput) => Promise<TelegramSyncResult>;
   repairTelegramEnvironment: (rowId: string) => Promise<TelegramRepairResult>;
   syncTelegram: () => Promise<TelegramSyncResult>;
+  getTelegramTopicSyncStatus: () => Promise<TelegramTopicSyncRowStatus[]>;
+  retryTelegramTopic: (rowId: string, codexThreadId: string) => Promise<void>;
+  attachTelegramTopic: (rowId: string, codexThreadId: string, topicId: number) => Promise<void>;
   onRuntimeStateChanged: (
     listener: (state: RuntimeBootstrapState) => void
   ) => () => void;

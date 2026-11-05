@@ -1293,3 +1293,32 @@ button:not(:disabled) {
     padding-right: 24px;
   }
 }
+.topic-sync-panel {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--border, #3d3d3d);
+  border-radius: 8px;
+  font-size: 13px;
+}
+
+.topic-sync-issue {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border, #3d3d3d);
+}
+
+.topic-sync-issue p {
+  margin: 5px 0;
+}
+
+.topic-sync-issue__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.topic-sync-issue__actions input {
+  width: 150px;
+}

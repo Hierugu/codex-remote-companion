@@ -41,6 +41,8 @@ import {
 } from './remote-execution-settings';
 import { TelegramSlashCommandService } from './telegram-slash-commands';
 import { StartupSettingsStore } from './startup-settings';
+import { TelegramTopicCreationGate } from './telegram-topic-gate';
+import { TelegramTopicAutoSync } from './telegram-topic-auto-sync';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const TELEGRAM_POLL_INTERVAL_MS = 3000;
@@ -53,10 +55,19 @@ const telegramConfigStore = new TelegramConfigStore();
 const remoteExecutionSettingsStore = new RemoteExecutionSettingsStore();
 const startupSettingsStore = new StartupSettingsStore();
 const telegramProvider = new HttpTelegramBotProvider();
+const telegramTopicGate = new TelegramTopicCreationGate();
 const telegramService = new TelegramService(
   telegramConfigStore,
   backendRegistry,
-  telegramProvider
+  telegramProvider,
+  telegramTopicGate
+);
+const telegramTopicAutoSync = new TelegramTopicAutoSync(
+  telegramConfigStore,
+  codexStore,
+  backendRegistry,
+  telegramProvider,
+  telegramTopicGate
 );
 const codexExecutor = new CodexThreadExecutor(codexStore);
 const remoteExecutionSettingsService = new RemoteExecutionSettingsService(
@@ -215,6 +226,7 @@ async function startRuntimeComponents(): Promise<RuntimeServerStartResult> {
   try {
     await codexOutboundPoller.start();
     telegramPoller.start();
+    telegramTopicAutoSync.start();
   } catch (error) {
     await runtimeController.stop();
     throw error;
@@ -371,6 +383,13 @@ ipcMain.handle('telegram:repair-environment', async (_event, rowId: string) =>
   telegramService.repairEnvironment(rowId)
 );
 ipcMain.handle('telegram:sync', async () => telegramService.sync());
+ipcMain.handle('telegram:topic-sync-status', async () => telegramTopicAutoSync.getStatus());
+ipcMain.handle('telegram:retry-topic', async (_event, rowId: string, threadId: string) =>
+  telegramTopicAutoSync.retry(rowId, threadId)
+);
+ipcMain.handle('telegram:attach-topic', async (_event, rowId: string, threadId: string, topicId: number) =>
+  telegramTopicAutoSync.attach(rowId, threadId, topicId)
+);
 
 ipcMain.handle(
   'runtime:start-server',
@@ -380,6 +399,7 @@ ipcMain.handle(
 ipcMain.handle(
   'runtime:stop-server',
   async (): Promise<RuntimeServerStartResult> => {
+    await telegramTopicAutoSync.stop();
     await telegramPoller.stop();
     await codexOutboundPoller.stop();
     await codexExecutor.dispose();
@@ -417,6 +437,7 @@ app.on('window-all-closed', () => {
 });
 
 app.on('before-quit', () => {
+  void telegramTopicAutoSync.stop();
   void telegramPoller.stop();
   void codexOutboundPoller.stop();
   void codexExecutor.dispose();

@@ -743,7 +743,7 @@ export class CodexLocalStore {
       return [];
     }
 
-    const threads = await this.listThreads(1000);
+    const threads = await this.listThreads(Number.MAX_SAFE_INTEGER);
     const projectThreads = threads.filter((thread) => thread.cwd === cwd);
 
     return Promise.all(
