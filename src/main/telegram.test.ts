@@ -600,6 +600,34 @@ test('Telegram provider falls back to plain text when rich Markdown is rejected'
   }
 });
 
+test('Telegram provider keeps links readable when rich Markdown is rejected', async () => {
+  const originalFetch = globalThis.fetch;
+  const requests: Array<{ method: string; body: Record<string, unknown> }> = [];
+  globalThis.fetch = async (url, options) => {
+    requests.push({
+      method: String(url).split('/').at(-1) ?? '',
+      body: JSON.parse(String(options?.body)) as Record<string, unknown>
+    });
+    return requests.length === 1
+      ? Response.json({ ok: false, description: "Bad Request: can't parse rich message" }, { status: 400 })
+      : Response.json({ ok: true, result: { message_id: 88, chat: { id: -100405 } } });
+  };
+
+  const url = 'https://github.com/rezonanz/soundgram-backend/pull/100/';
+  try {
+    await new HttpTelegramBotProvider().sendMessage('123:token', {
+      chatId: '-100405', messageThreadId: 5,
+      text: `👤\nСсылка: [${url}](${url}) и [ревью](${url})`,
+      format: 'markdown'
+    });
+    assert.equal(requests[0]?.method, 'sendRichMessage');
+    assert.equal(requests[1]?.method, 'sendMessage');
+    assert.equal(requests[1]?.body.text, `👤\nСсылка: ${url} и ревью (${url})`);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test('TelegramService repair renames old topics and remaps threads to fresh topics', async () => {
   const tempRoot = await mkdtemp(join(tmpdir(), 'codex-remote-companion-phase6-'));
   const backendRegistry = new PersistentBackendRegistry(join(tempRoot, 'backend-registry.json'));

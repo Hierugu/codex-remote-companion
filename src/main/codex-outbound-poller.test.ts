@@ -91,6 +91,19 @@ test('Codex outbound mirror sends only new desktop messages and remembers its cu
   await restarted.pollOnce();
   assert.deepEqual(sent, ['👤 New prompt', '🤖\nNew answer', '🤖\nRetry me']);
 
+  const link = 'https://github.com/rezonanz/soundgram-backend/pull/100/';
+  messages.push({
+    timestamp: null, role: 'user',
+    text: `Можешь перепроверить\n[${link}](${link})`,
+    sourceType: 'response_item.message'
+  });
+  await writeFile(rolloutPath, '{}\n{}\n{}\n{}\n');
+  const linkChanged = new Date(Date.now() + 3000);
+  await utimes(rolloutPath, linkChanged, linkChanged);
+  await restarted.pollOnce();
+  assert.equal(sent.at(-1), `👤\nМожешь перепроверить\n[${link}](${link})`);
+  assert.equal(formats.at(-1), 'markdown');
+
   restarted.suspendThread('thread-1');
   messages.push(
     { timestamp: null, role: 'user', text: 'From Telegram', sourceType: 'response_item.message' },
@@ -100,5 +113,5 @@ test('Codex outbound mirror sends only new desktop messages and remembers its cu
   await restarted.pollOnce();
   await restarted.resumeThread('thread-1');
   await restarted.pollOnce();
-  assert.deepEqual(sent, ['👤 New prompt', '🤖\nNew answer', '🤖\nRetry me']);
+  assert.deepEqual(sent, ['👤 New prompt', '🤖\nNew answer', '🤖\nRetry me', `👤\nМожешь перепроверить\n[${link}](${link})`]);
 });

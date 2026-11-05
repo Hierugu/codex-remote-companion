@@ -7,6 +7,7 @@ import { writeJsonAtomically } from './json-file';
 import type { PersistentBackendRegistry } from './backend-registry';
 import type { CodexLocalStore } from './codex-store';
 import type { TelegramService } from './telegram-service';
+import { hasMarkdownLink, plainTextFromMarkdownLinks } from './telegram-markdown-links';
 
 interface ThreadStore {
   listThreads(limit: number): Promise<CodexThreadSummary[]>;
@@ -122,15 +123,18 @@ export class CodexOutboundPoller {
         if (this.suspended.has(link.codexThreadId)) break;
         const message = thread.messages[index];
         if (message && isMirrorable(message) && message.text.trim()) {
-          if (message.role === 'assistant' && Buffer.byteLength(message.text, 'utf8') <= MAX_RICH_MESSAGE_BYTES) {
+          if (
+            Buffer.byteLength(message.text, 'utf8') <= MAX_RICH_MESSAGE_BYTES &&
+            (message.role === 'assistant' || hasMarkdownLink(message.text))
+          ) {
             await this.telegram.sendThreadReply({
               projectThreadId: link.projectThreadId,
-              text: `🤖\n${message.text}`,
+              text: `${message.role === 'user' ? '👤' : '🤖'}\n${message.text}`,
               format: 'markdown'
             });
           } else {
             const prefix = message.role === 'user' ? '👤 ' : '🤖 ';
-            for (const text of splitMessage(message.text, prefix)) {
+            for (const text of splitMessage(plainTextFromMarkdownLinks(message.text), prefix)) {
               await this.telegram.sendThreadReply({ projectThreadId: link.projectThreadId, text });
             }
           }

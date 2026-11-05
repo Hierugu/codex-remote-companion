@@ -1,3 +1,5 @@
+import { plainTextFromMarkdownLinks } from './telegram-markdown-links';
+
 export interface TelegramBotIdentity {
   id: string;
   username: string | null;
@@ -339,7 +341,7 @@ export class HttpTelegramBotProvider implements TelegramBotProvider {
         if (!isRichFormattingRejected(error)) throw error;
         result = await callTelegramApi<TelegramMessage>(botToken, 'sendMessage', {
           ...payload,
-          text: input.text
+          text: plainTextFromMarkdownLinks(input.text)
         });
       }
     } else {
@@ -378,7 +380,10 @@ export class HttpTelegramBotProvider implements TelegramBotProvider {
       result = await callEdit(input.format === 'markdown');
     } catch (error) {
       if (input.format === 'markdown' && isRichFormattingRejected(error)) {
-        result = await callEdit(false);
+        result = await callTelegramApi<TelegramMessage>(botToken, 'editMessageText', {
+          ...payload,
+          text: plainTextFromMarkdownLinks(input.text)
+        });
       } else if (error instanceof Error && /message is not modified/i.test(error.message)) {
         result = {
           message_id: input.messageId,
