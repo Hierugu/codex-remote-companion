@@ -36,6 +36,7 @@ function fakeSlashCommandService(
 }
 
 class FakeTelegramPollingProvider implements TelegramBotProvider {
+  async getForumTopicIconStickers(): Promise<Array<{ emoji: string; customEmojiId: string }>> { return []; }
   async answerCallbackQuery(): Promise<void> {}
   readonly createdTopics: Array<{ chatId: string; name: string }> = [];
 

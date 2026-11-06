@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, readFile, writeFile } from 'node:fs/promises';
+import { appendFile, mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
@@ -25,17 +25,22 @@ async function fixture(chatIds = ['-1001']) {
     id: 'thread-1', title: 'Forked chat', updatedAt: '2026-01-01T00:00:00Z',
     archived: false, cwd: '/project'
   }];
-  const store = { listProjectThreadOptions: async () => threads };
+  let rolloutPath: string | null = null;
+  const store = {
+    listProjectThreadOptions: async () => threads,
+    listThreads: async () => rolloutPath ? [{ id: 'thread-1', path: rolloutPath }] : []
+  };
   const calls: string[] = [];
-  const edits: Array<{ chatId: string; topicId: number; title: string }> = [];
+  const edits: Array<{ chatId: string; topicId: number; title: string; iconId?: string }> = [];
   let nextTopicId = 100;
   const provider = {
+    getForumTopicIconStickers: async () => [{ emoji: '⚡', customEmojiId: 'lightning-id' }],
     createForumTopic: async (_token: string, chatId: string, _title: string) => {
       calls.push(chatId);
       return { messageThreadId: nextTopicId++, name: 'Forked chat' };
     },
-    editForumTopic: async (_token: string, chatId: string, topicId: number, title: string) => {
-      edits.push({ chatId, topicId, title });
+    editForumTopic: async (_token: string, chatId: string, topicId: number, title: string, iconId?: string) => {
+      edits.push({ chatId, topicId, title, ...(iconId === undefined ? {} : { iconId }) });
     }
   };
   const statePath = join(root, 'jobs.json');
@@ -43,7 +48,8 @@ async function fixture(chatIds = ['-1001']) {
   const create = (registryValue: any = registry) => new TelegramTopicAutoSync(
     config as any, store as any, registryValue, provider as any, gate, statePath, () => undefined
   );
-  return { registry, config, threads, provider, calls, edits, statePath, create };
+  return { registry, config, threads, provider, calls, edits, statePath, create,
+    setRolloutPath: (path: string) => { rolloutPath = path; }, root };
 }
 
 test('auto-sync links a new chat once and supports two groups for one project', async () => {
@@ -87,6 +93,83 @@ test('queued command survives restart and a linked topic clears stale queue stat
   await f.create().runOnce();
   assert.equal(f.calls.length, 2);
   assert.deepEqual(JSON.parse(await readFile(f.statePath, 'utf8')).requested, {});
+});
+
+test('active Codex turn changes a linked topic icon and completion restores its default letter', async () => {
+  const f = await fixture();
+  const rolloutPath = join(f.root, 'rollout.jsonl');
+  f.setRolloutPath(rolloutPath);
+  await writeFile(rolloutPath, JSON.stringify({
+    type: 'event_msg', timestamp: '2026-01-01T00:00:00Z', payload: { type: 'task_started' }
+  }) + '\n');
+  const sync = f.create();
+  await sync.runOnce();
+  await sync.runStatusOnce();
+  assert.deepEqual(f.edits, [{ chatId: '-1001', topicId: 100, title: 'Forked chat', iconId: 'lightning-id' }]);
+  assert.equal(JSON.parse(await readFile(f.statePath, 'utf8')).icons['telegram:topic:-1001:100'].applied, true);
+
+  await appendFile(rolloutPath, JSON.stringify({
+    type: 'event_msg', timestamp: '2026-01-01T00:00:10Z', payload: { type: 'task_complete' }
+  }) + '\n');
+  await sync.runStatusOnce();
+  assert.deepEqual(f.edits[1], { chatId: '-1001', topicId: 100, title: 'Forked chat', iconId: '' });
+  assert.deepEqual(JSON.parse(await readFile(f.statePath, 'utf8')).icons, {});
+  await sync.runStatusOnce();
+  assert.equal(f.edits.length, 2);
+});
+
+test('status sync restores a busy icon after Companion restarts while Codex has finished', async () => {
+  const f = await fixture();
+  const rolloutPath = join(f.root, 'rollout.jsonl');
+  f.setRolloutPath(rolloutPath);
+  await writeFile(rolloutPath, JSON.stringify({
+    type: 'event_msg', timestamp: '2026-01-01T00:00:00Z', payload: { type: 'task_started' }
+  }) + '\n');
+  const sync = f.create();
+  await sync.runOnce();
+  await sync.runStatusOnce();
+  await appendFile(rolloutPath, JSON.stringify({
+    type: 'event_msg', timestamp: '2026-01-01T00:00:10Z', payload: { type: 'turn_aborted' }
+  }) + '\n');
+  await f.create().runStatusOnce();
+  assert.equal(f.edits.at(-1)?.iconId, '');
+});
+
+test('a short turn does not flash the working icon', async () => {
+  const f = await fixture();
+  const rolloutPath = join(f.root, 'rollout.jsonl');
+  f.setRolloutPath(rolloutPath);
+  await writeFile(rolloutPath, JSON.stringify({
+    type: 'event_msg', timestamp: new Date().toISOString(), payload: { type: 'task_started' }
+  }) + '\n');
+  const sync = f.create();
+  await sync.runOnce();
+  await sync.runStatusOnce();
+  await appendFile(rolloutPath, JSON.stringify({
+    type: 'event_msg', timestamp: new Date().toISOString(), payload: { type: 'task_complete' }
+  }) + '\n');
+  await sync.runStatusOnce();
+  assert.deepEqual(f.edits, []);
+});
+
+test('Telegram rate limit pauses icon edits for all linked topics', async () => {
+  const f = await fixture(['-1001', '-1002']);
+  const rolloutPath = join(f.root, 'rollout.jsonl');
+  f.setRolloutPath(rolloutPath);
+  await writeFile(rolloutPath, JSON.stringify({
+    type: 'event_msg', timestamp: '2026-01-01T00:00:00Z', payload: { type: 'task_started' }
+  }) + '\n');
+  const sync = f.create();
+  await sync.runOnce();
+  await sync.runOnce();
+  let attempts = 0;
+  f.provider.editForumTopic = async () => {
+    attempts += 1;
+    throw new TelegramApiError('Too Many Requests', 429, 40);
+  };
+  await sync.runStatusOnce();
+  await sync.runStatusOnce();
+  assert.equal(attempts, 1);
 });
 
 test('auto-sync renames linked topics in both groups without creating new topics', async () => {

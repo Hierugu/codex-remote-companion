@@ -21,6 +21,7 @@ import { HttpTelegramBotProvider } from './telegram-provider';
 import { TelegramService } from './telegram-service';
 
 class FakeTelegramBotProvider implements TelegramBotProvider {
+  async getForumTopicIconStickers(): Promise<Array<{ emoji: string; customEmojiId: string }>> { return []; }
   async answerCallbackQuery(): Promise<void> {}
   readonly createdTopics: Array<{ chatId: string; name: string }> = [];
 
@@ -544,6 +545,30 @@ test('Telegram provider receives project buttons and callback queries', async ()
     });
     await provider.answerCallbackQuery('123:token', 'callback-1', 'Chosen');
     assert.equal(requests[2]?.body.callback_query_id, 'callback-1');
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('Telegram provider lists allowed topic icons and can restore the default icon', async () => {
+  const originalFetch = globalThis.fetch;
+  const requests: Array<{ method: string; body: Record<string, unknown> }> = [];
+  globalThis.fetch = async (url, options) => {
+    const method = String(url).split('/').at(-1) ?? '';
+    const body = JSON.parse(String(options?.body)) as Record<string, unknown>;
+    requests.push({ method, body });
+    return Response.json({ ok: true, result: method === 'getForumTopicIconStickers'
+      ? [{ emoji: '⚡', custom_emoji_id: 'icon-1' }] : true });
+  };
+  try {
+    const provider = new HttpTelegramBotProvider();
+    assert.deepEqual(await provider.getForumTopicIconStickers('123:token'), [
+      { emoji: '⚡', customEmojiId: 'icon-1' }
+    ]);
+    await provider.editForumTopic('123:token', '-100405', 42, 'Topic', 'icon-1');
+    await provider.editForumTopic('123:token', '-100405', 42, 'Topic', '');
+    assert.equal(requests[1]?.body.icon_custom_emoji_id, 'icon-1');
+    assert.equal(requests[2]?.body.icon_custom_emoji_id, '');
   } finally {
     globalThis.fetch = originalFetch;
   }

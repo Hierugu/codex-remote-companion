@@ -67,6 +67,7 @@ export interface TelegramInboundUpdate {
 }
 
 export interface TelegramBotProvider {
+  getForumTopicIconStickers(botToken: string): Promise<Array<{ emoji: string; customEmojiId: string }>>;
   getIdentity(botToken: string): Promise<TelegramBotIdentity>;
   getForumGroup(botToken: string, chatId: string): Promise<TelegramForumGroupInfo>;
   getBotPermissions(botToken: string, chatId: string): Promise<TelegramBotPermissions>;
@@ -84,7 +85,9 @@ export interface TelegramBotProvider {
     botToken: string,
     chatId: string,
     messageThreadId: number,
-    name: string
+    name: string,
+    iconCustomEmojiId?: string,
+    options?: { retryRateLimits?: boolean; retryTransientErrors?: boolean }
   ): Promise<void>;
   closeForumTopic(botToken: string, chatId: string, messageThreadId: number): Promise<void>;
   reopenForumTopic(botToken: string, chatId: string, messageThreadId: number): Promise<void>;
@@ -289,6 +292,17 @@ export class HttpTelegramBotProvider implements TelegramBotProvider {
     });
   }
 
+  async getForumTopicIconStickers(botToken: string): Promise<Array<{ emoji: string; customEmojiId: string }>> {
+    const stickers = await callTelegramApi<Array<{ emoji?: string; custom_emoji_id?: string }>>(
+      botToken, 'getForumTopicIconStickers', {}
+    );
+    return stickers
+      .filter((sticker): sticker is { emoji: string; custom_emoji_id: string } =>
+        typeof sticker.emoji === 'string' && typeof sticker.custom_emoji_id === 'string'
+      )
+      .map((sticker) => ({ emoji: sticker.emoji, customEmojiId: sticker.custom_emoji_id }));
+  }
+
   async createForumTopic(
     botToken: string,
     chatId: string,
@@ -312,13 +326,16 @@ export class HttpTelegramBotProvider implements TelegramBotProvider {
     botToken: string,
     chatId: string,
     messageThreadId: number,
-    name: string
+    name: string,
+    iconCustomEmojiId?: string,
+    options?: { retryRateLimits?: boolean; retryTransientErrors?: boolean }
   ): Promise<void> {
     await callTelegramApi<boolean>(botToken, 'editForumTopic', {
       chat_id: chatId,
       message_thread_id: messageThreadId,
-      name
-    });
+      name,
+      icon_custom_emoji_id: iconCustomEmojiId
+    }, options);
   }
 
   async closeForumTopic(
