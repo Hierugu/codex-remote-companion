@@ -116,6 +116,8 @@ export class TelegramSlashCommandService {
             [
               'Available thread commands:',
               '/help — show remote commands for this thread',
+              '/new <name> — create a new Codex chat in this project',
+              '/fork <name> — fork this Codex chat into a new topic',
               '/status — show current model, reasoning, and permissions',
               '/model — show current model and available models',
               '/reasoning — show current reasoning mode and available modes',

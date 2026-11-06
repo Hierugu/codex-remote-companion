@@ -21,6 +21,7 @@ import { HttpTelegramBotProvider } from './telegram-provider';
 import { TelegramService } from './telegram-service';
 
 class FakeTelegramBotProvider implements TelegramBotProvider {
+  async answerCallbackQuery(): Promise<void> {}
   readonly createdTopics: Array<{ chatId: string; name: string }> = [];
 
   readonly editedTopics: Array<{ chatId: string; messageThreadId: number; name: string }> = [];
@@ -506,6 +507,43 @@ test('Telegram provider does not repeat a rate-limited topic creation call', asy
       /Too Many Requests/
     );
     assert.equal(calls, 1);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('Telegram provider receives project buttons and callback queries', async () => {
+  const originalFetch = globalThis.fetch;
+  const requests: Array<{ method: string; body: Record<string, unknown> }> = [];
+  globalThis.fetch = async (url, options) => {
+    const method = String(url).split('/').at(-1) ?? '';
+    const body = JSON.parse(String(options?.body)) as Record<string, unknown>;
+    requests.push({ method, body });
+    if (method === 'getUpdates') return Response.json({ ok: true, result: [{
+      update_id: 25, callback_query: {
+        id: 'callback-1', data: 'crc:new:20:1', from: { id: 123 },
+        message: { chat: { id: -100405 } }
+      }
+    }] });
+    if (method === 'sendMessage') return Response.json({ ok: true, result: {
+      message_id: 10, chat: { id: -100405 }
+    } });
+    return Response.json({ ok: true, result: true });
+  };
+  try {
+    const provider = new HttpTelegramBotProvider();
+    const updates = await provider.getUpdates('123:token', {});
+    assert.deepEqual(requests[0]?.body.allowed_updates, ['message', 'callback_query']);
+    assert.equal(updates[0]?.callbackQuery?.data, 'crc:new:20:1');
+    await provider.sendMessage('123:token', {
+      chatId: '-100405', messageThreadId: null, text: 'Choose project',
+      inlineKeyboard: [[{ text: 'Project B', callbackData: 'crc:new:20:1' }]]
+    });
+    assert.deepEqual(requests[1]?.body.reply_markup, {
+      inline_keyboard: [[{ text: 'Project B', callback_data: 'crc:new:20:1' }]]
+    });
+    await provider.answerCallbackQuery('123:token', 'callback-1', 'Chosen');
+    assert.equal(requests[2]?.body.callback_query_id, 'callback-1');
   } finally {
     globalThis.fetch = originalFetch;
   }

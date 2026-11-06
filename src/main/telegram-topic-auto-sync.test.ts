@@ -61,6 +61,34 @@ test('auto-sync links a new chat once and supports two groups for one project', 
   assert.deepEqual((await sync.getStatus()).map((row) => row.pending), [0, 0]);
 });
 
+test('queued command chat gets a topic before it appears in local Codex listings', async () => {
+  const f = await fixture();
+  const sync = f.create();
+  await sync.runOnce();
+  await sync.enqueue('row-0', 'new-from-telegram', 'project-1', 'New from Telegram');
+  assert.equal((await sync.getStatus())[0]?.pending, 1);
+  await sync.runOnce();
+  const state = await f.registry.readState();
+  assert.equal(state.codexThreadBindings.some((item) => item.codexThreadId === 'new-from-telegram'), true);
+  assert.equal(state.platformBindings.some((item) => item.projectThreadId === 'project-thread:new-from-telegram'), true);
+  assert.equal((await sync.getStatus())[0]?.pending, 0);
+});
+
+test('queued command survives restart and a linked topic clears stale queue state', async () => {
+  const f = await fixture();
+  await f.create().enqueue('row-0', 'new-from-telegram', 'project-1', 'New from Telegram');
+  const restarted = f.create();
+  await restarted.runOnce();
+  await restarted.runOnce();
+  assert.equal(f.calls.length, 2);
+  assert.deepEqual(JSON.parse(await readFile(f.statePath, 'utf8')).requested, {});
+
+  await restarted.enqueue('row-0', 'new-from-telegram', 'project-1', 'New from Telegram');
+  await f.create().runOnce();
+  assert.equal(f.calls.length, 2);
+  assert.deepEqual(JSON.parse(await readFile(f.statePath, 'utf8')).requested, {});
+});
+
 test('auto-sync renames linked topics in both groups without creating new topics', async () => {
   const f = await fixture(['-1001', '-1002']);
   const sync = f.create();

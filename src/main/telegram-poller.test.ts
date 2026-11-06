@@ -36,6 +36,7 @@ function fakeSlashCommandService(
 }
 
 class FakeTelegramPollingProvider implements TelegramBotProvider {
+  async answerCallbackQuery(): Promise<void> {}
   readonly createdTopics: Array<{ chatId: string; name: string }> = [];
 
   readonly sentMessages: TelegramSendMessageInput[] = [];
@@ -123,6 +124,41 @@ class FakeTelegramPollingProvider implements TelegramBotProvider {
     };
   }
 }
+
+test('TelegramInboundPoller routes General commands and project callbacks before chat binding', async () => {
+  const provider = new FakeTelegramPollingProvider();
+  provider.updates = [
+    { updateId: 700, message: {
+      messageId: 1, text: '/new Review auth', chatId: '-1001', chatType: 'supergroup',
+      messageThreadId: null, senderId: '12345', senderIsBot: false
+    } },
+    { updateId: 701, message: null, callbackQuery: {
+      id: 'callback-1', data: 'crc:new:700:0', chatId: '-1001', senderId: '12345'
+    } }
+  ];
+  const calls: string[] = [];
+  let lastUpdateId: number | null = null;
+  const config = {
+    getPollingConfig: async () => ({ botToken: 'token', ownerUserId: '12345', lastUpdateId }),
+    recordLastUpdateId: async (id: number) => { lastUpdateId = id; },
+    recordIssue: async () => undefined
+  };
+  const poller = new TelegramInboundPoller(
+    config as never,
+    { normalizeInboundMessage: async () => { throw new Error('General must not be routed as a chat'); } } as never,
+    { handleInboundEvent: async () => { throw new Error('unexpected'); } },
+    { resumeAndRun: async () => { throw new Error('unexpected'); } },
+    fakeSlashCommandService(), provider, 10, undefined,
+    {
+      handleMessage: async (_id, message) => { calls.push(message.text ?? ''); return true; },
+      handleCallback: async (callback) => { calls.push(callback.data ?? ''); return true; }
+    }
+  );
+  const result = await poller.pollOnce();
+  assert.deepEqual(calls, ['/new Review auth', 'crc:new:700:0']);
+  assert.equal(result.processed, 2);
+  assert.equal(lastUpdateId, 701);
+});
 
 async function seedTelegramProject(registry: PersistentBackendRegistry) {
   await registry.ensureBootstrap({

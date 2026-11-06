@@ -28,6 +28,7 @@ export interface TelegramSendMessageInput {
   text: string;
   format?: 'markdown';
   replyToMessageId?: number;
+  inlineKeyboard?: Array<Array<{ text: string; callbackData: string }>>;
 }
 
 export interface TelegramSendMessageResult {
@@ -57,6 +58,12 @@ export interface TelegramUpdateMessage {
 export interface TelegramInboundUpdate {
   updateId: number;
   message: TelegramUpdateMessage | null;
+  callbackQuery?: {
+    id: string;
+    data: string | null;
+    chatId: string | null;
+    senderId: string;
+  } | null;
 }
 
 export interface TelegramBotProvider {
@@ -67,6 +74,7 @@ export interface TelegramBotProvider {
     botToken: string,
     input: { offset?: number; timeoutSeconds?: number; limit?: number }
   ): Promise<TelegramInboundUpdate[]>;
+  answerCallbackQuery(botToken: string, callbackQueryId: string, text?: string): Promise<void>;
   createForumTopic(
     botToken: string,
     chatId: string,
@@ -232,12 +240,18 @@ export class HttpTelegramBotProvider implements TelegramBotProvider {
           chat: { id: number; type: string };
           from?: { id: number; is_bot?: boolean };
         };
+        callback_query?: {
+          id: string;
+          data?: string;
+          from: { id: number };
+          message?: { chat: { id: number } };
+        };
       }>
     >(botToken, 'getUpdates', {
       offset: input.offset,
       timeout: input.timeoutSeconds ?? 0,
       limit: input.limit ?? 20,
-      allowed_updates: ['message']
+      allowed_updates: ['message', 'callback_query']
     });
 
     return result.map((update) => ({
@@ -255,8 +269,24 @@ export class HttpTelegramBotProvider implements TelegramBotProvider {
                 : null,
             senderIsBot: update.message.from?.is_bot === true
           }
+        : null,
+      callbackQuery: update.callback_query
+        ? {
+            id: update.callback_query.id,
+            data: update.callback_query.data ?? null,
+            chatId: update.callback_query.message
+              ? String(update.callback_query.message.chat.id) : null,
+            senderId: String(update.callback_query.from.id)
+          }
         : null
     }));
+  }
+
+  async answerCallbackQuery(botToken: string, callbackQueryId: string, text?: string): Promise<void> {
+    await callTelegramApi<boolean>(botToken, 'answerCallbackQuery', {
+      callback_query_id: callbackQueryId,
+      text
+    });
   }
 
   async createForumTopic(
@@ -328,7 +358,13 @@ export class HttpTelegramBotProvider implements TelegramBotProvider {
       message_thread_id: input.messageThreadId ?? undefined,
       reply_parameters: input.replyToMessageId
         ? { message_id: input.replyToMessageId }
-        : undefined
+        : undefined,
+      reply_markup: input.inlineKeyboard ? {
+        inline_keyboard: input.inlineKeyboard.map((row) => row.map((button) => ({
+          text: button.text,
+          callback_data: button.callbackData
+        })))
+      } : undefined
     };
     let result: TelegramMessage;
     if (input.format === 'markdown') {

@@ -43,6 +43,7 @@ import { TelegramSlashCommandService } from './telegram-slash-commands';
 import { StartupSettingsStore } from './startup-settings';
 import { TelegramTopicCreationGate } from './telegram-topic-gate';
 import { TelegramTopicAutoSync } from './telegram-topic-auto-sync';
+import { TelegramSessionCommands } from './telegram-session-commands';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const TELEGRAM_POLL_INTERVAL_MS = 3000;
@@ -69,6 +70,13 @@ const telegramTopicAutoSync = new TelegramTopicAutoSync(
   telegramProvider,
   telegramTopicGate
 );
+const telegramSessionCommands = new TelegramSessionCommands(
+  telegramConfigStore,
+  backendRegistry,
+  codexStore,
+  telegramProvider,
+  telegramTopicAutoSync
+);
 const codexExecutor = new CodexThreadExecutor(codexStore);
 const remoteExecutionSettingsService = new RemoteExecutionSettingsService(
   remoteExecutionSettingsStore,
@@ -93,7 +101,8 @@ const telegramPoller = new TelegramInboundPoller(
   telegramSlashCommands,
   telegramProvider,
   TELEGRAM_POLL_INTERVAL_MS,
-  codexOutboundPoller
+  codexOutboundPoller,
+  telegramSessionCommands
 );
 const productApi = new ProductApiService({
   getRuntimeState,
@@ -227,6 +236,9 @@ async function startRuntimeComponents(): Promise<RuntimeServerStartResult> {
     await codexOutboundPoller.start();
     telegramPoller.start();
     telegramTopicAutoSync.start();
+    void telegramSessionCommands.recoverPending().catch((error) =>
+      safeConsoleError(`Telegram command recovery failed: ${error instanceof Error ? error.message : String(error)}`)
+    );
   } catch (error) {
     await runtimeController.stop();
     throw error;

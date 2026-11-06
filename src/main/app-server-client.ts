@@ -168,6 +168,17 @@ export class CodexAppServerClient {
     });
   }
 
+  async threadFork(threadId: string): Promise<AppServerThreadStartResponse> {
+    return this.request<AppServerThreadStartResponse>('thread/fork', {
+      threadId,
+      excludeTurns: true
+    });
+  }
+
+  async threadSetName(threadId: string, name: string): Promise<void> {
+    await this.request('thread/name/set', { threadId, name });
+  }
+
   async threadList(limit = 5): Promise<AppServerThreadListResponse> {
     return this.request<AppServerThreadListResponse>('thread/list', { limit });
   }

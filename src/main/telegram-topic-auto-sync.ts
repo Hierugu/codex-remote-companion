@@ -29,6 +29,7 @@ interface TopicJobFile {
   version: 1;
   rateLimitUntil?: number;
   jobs: Record<string, TopicJob>;
+  requested?: Record<string, { rowId: string; codexThreadId: string; projectId: string; title: string }>;
 }
 
 interface Candidate {
@@ -115,14 +116,28 @@ export class TelegramTopicAutoSync {
   }
 
   async retry(rowId: string, codexThreadId: string): Promise<void> {
-    const state = await this.readJobs();
     const key = jobKey(rowId, codexThreadId);
-    const job = state.jobs[key];
-    if (!job || job.status !== 'needsReview') {
-      throw new Error('This topic does not need a manual retry.');
+    await this.mutateJobs((state) => {
+      const job = state.jobs[key];
+      if (!job || job.status !== 'needsReview') {
+        throw new Error('This topic does not need a manual retry.');
+      }
+      state.jobs[key] = { rowId, codexThreadId, status: 'queued' };
+    });
+    if (this.running) void this.tick();
+  }
+
+  async enqueue(rowId: string, codexThreadId: string, projectId: string, title: string): Promise<void> {
+    const config = await this.configStore.readState();
+    if (!config.rows.some((row) => row.id === rowId && row.projectId === projectId && row.setupCompletedAt)) {
+      throw new Error('The Telegram project binding is no longer active.');
     }
-    state.jobs[key] = { rowId, codexThreadId, status: 'queued' };
-    await this.writeJobs(state);
+    const key = jobKey(rowId, codexThreadId);
+    await this.mutateJobs((state) => {
+      state.requested ??= {};
+      state.requested[key] = { rowId, codexThreadId, projectId, title };
+      state.jobs[key] ??= { rowId, codexThreadId, status: 'queued' };
+    });
     if (this.running) void this.tick();
   }
 
@@ -156,17 +171,31 @@ export class TelegramTopicAutoSync {
     const { candidates, renames } = await this.scan();
     const state = await this.readJobs();
     if ((state.rateLimitUntil ?? 0) > Date.now()) return;
+    const registry = await this.registry.readState();
+    const rows = (await this.configStore.readState()).rows;
+    for (const [key, request] of Object.entries(state.requested ?? {})) {
+      const projectThreadId = registry.codexThreadBindings.find((binding) =>
+        binding.codexThreadId === request.codexThreadId)?.projectThreadId ?? `project-thread:${request.codexThreadId}`;
+      const row = rows.find((item) => item.id === request.rowId);
+      const alreadyBound = registry.platformBindings.some((binding) =>
+        binding.platform === 'telegram' && binding.bindingType === 'thread-surface' &&
+        binding.projectThreadId === projectThreadId &&
+        binding.surfaceId.startsWith(`telegram:topic:${row?.forumGroupId}:`)
+      );
+      if (alreadyBound) {
+        await this.removeJob(key);
+      }
+    }
     for (const candidate of candidates) {
       const key = jobKey(candidate.rowId, candidate.thread.id);
       const job = state.jobs[key];
       if (job?.status === 'needsReview') continue;
       if (job?.status === 'creating') {
-        state.jobs[key] = {
+        await this.setJob(key, {
           ...job,
           status: 'needsReview',
           reason: 'Companion stopped while creating this topic. Check Telegram before retrying.'
-        };
-        await this.writeJobs(state);
+        });
         continue;
       }
       if (job?.status === 'queued' && (job.retryAt ?? 0) > Date.now()) continue;
@@ -279,6 +308,7 @@ export class TelegramTopicAutoSync {
     if (!config.botToken) return { candidates: [], renames: [], rowIds: [] };
     const rows = config.rows.filter((row) => row.setupCompletedAt);
     const registry = await this.registry.readState();
+    const requested = (await this.readJobs()).requested ?? {};
     const machineId = registry.localMachines[0]?.machineId;
     if (!machineId) return { candidates: [], renames: [], rowIds: rows.map((row) => row.id) };
 
@@ -291,7 +321,13 @@ export class TelegramTopicAutoSync {
         threads = await this.codexStore.listProjectThreadOptions(row.projectId);
         threadsByProject.set(row.projectId, threads);
       }
-      for (const thread of threads) {
+      const requestedThreads: CodexProjectThreadOption[] = Object.values(requested)
+        .filter((item) => item.rowId === row.id && item.projectId === row.projectId)
+        .filter((item) => !threads!.some((thread) => thread.id === item.codexThreadId))
+        .map((item) => ({
+          id: item.codexThreadId, title: item.title, archived: false, cwd: null, updatedAt: null
+        }));
+      for (const thread of [...threads, ...requestedThreads]) {
         if (thread.archived || !thread.title || thread.title === thread.id) continue;
         const projectThreadId = registry.codexThreadBindings.find((binding) =>
           binding.codexThreadId === thread.id
@@ -347,10 +383,10 @@ export class TelegramTopicAutoSync {
       const raw = await readFile(this.statePath, 'utf8');
       const { value } = parseJsonWithRecovery<TopicJobFile>(raw);
       return value.version === 1 && value.jobs && typeof value.jobs === 'object'
-        ? value : { version: 1, jobs: {} };
+        ? { ...value, requested: value.requested ?? {} } : { version: 1, jobs: {}, requested: {} };
     } catch (error) {
       if (error instanceof Error && 'code' in error && error.code === 'ENOENT') {
-        return { version: 1, jobs: {} };
+        return { version: 1, jobs: {}, requested: {} };
       }
       throw error;
     }
@@ -361,22 +397,30 @@ export class TelegramTopicAutoSync {
   }
 
   private async setJob(key: string, job: TopicJob, rateLimitUntil?: number): Promise<void> {
-    const state = await this.readJobs();
-    state.jobs[key] = job;
-    if (rateLimitUntil) state.rateLimitUntil = Math.max(state.rateLimitUntil ?? 0, rateLimitUntil);
-    await this.writeJobs(state);
+    await this.mutateJobs((state) => {
+      state.jobs[key] = job;
+      if (rateLimitUntil) state.rateLimitUntil = Math.max(state.rateLimitUntil ?? 0, rateLimitUntil);
+    });
   }
 
   private async setRateLimit(until: number): Promise<void> {
-    const state = await this.readJobs();
-    state.rateLimitUntil = Math.max(state.rateLimitUntil ?? 0, until);
-    await this.writeJobs(state);
+    await this.mutateJobs((state) => {
+      state.rateLimitUntil = Math.max(state.rateLimitUntil ?? 0, until);
+    });
   }
 
   private async removeJob(key: string): Promise<void> {
-    const state = await this.readJobs();
-    if (!(key in state.jobs)) return;
-    delete state.jobs[key];
-    await this.writeJobs(state);
+    await this.mutateJobs((state) => {
+      delete state.jobs[key];
+      delete state.requested?.[key];
+    });
+  }
+
+  private async mutateJobs(change: (state: TopicJobFile) => void): Promise<void> {
+    await this.topicGate.run('telegram-topic-jobs-file', async () => {
+      const state = await this.readJobs();
+      change(state);
+      await this.writeJobs(state);
+    });
   }
 }

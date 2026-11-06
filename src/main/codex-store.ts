@@ -678,7 +678,8 @@ export class CodexLocalStore {
       .filter((rollout) => !rollout.hiddenFromProjectThreads)
       .map((rollout) => {
         const indexEntry = indexById.get(rollout.id);
-        const isUserFacingRollout = Boolean(indexEntry) || rollout.source === 'vscode';
+        const isUserFacingRollout = Boolean(indexEntry) || rollout.source === 'vscode' ||
+          rollout.originator === 'codex_remote_companion';
 
         if (!isUserFacingRollout) {
           return null;
