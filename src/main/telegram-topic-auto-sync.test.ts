@@ -45,8 +45,8 @@ async function fixture(chatIds = ['-1001']) {
   };
   const statePath = join(root, 'jobs.json');
   const gate = new TelegramTopicCreationGate();
-  const create = (registryValue: any = registry) => new TelegramTopicAutoSync(
-    config as any, store as any, registryValue, provider as any, gate, statePath, () => undefined
+  const create = (registryValue: any = registry, mode: 'title' | 'icon' = 'title') => new TelegramTopicAutoSync(
+    config as any, store as any, registryValue, provider as any, gate, statePath, () => undefined, mode
   );
   return { registry, config, threads, provider, calls, edits, statePath, create,
     setRolloutPath: (path: string) => { rolloutPath = path; }, root };
@@ -102,7 +102,7 @@ test('active Codex turn changes a linked topic icon and completion restores its 
   await writeFile(rolloutPath, JSON.stringify({
     type: 'event_msg', timestamp: '2026-01-01T00:00:00Z', payload: { type: 'task_started' }
   }) + '\n');
-  const sync = f.create();
+  const sync = f.create(undefined, 'icon');
   await sync.runOnce();
   await sync.runStatusOnce();
   assert.deepEqual(f.edits, [{ chatId: '-1001', topicId: 100, title: '', iconId: 'lightning-id' }]);
@@ -125,14 +125,76 @@ test('status sync restores a busy icon after Companion restarts while Codex has 
   await writeFile(rolloutPath, JSON.stringify({
     type: 'event_msg', timestamp: '2026-01-01T00:00:00Z', payload: { type: 'task_started' }
   }) + '\n');
-  const sync = f.create();
+  const sync = f.create(undefined, 'icon');
   await sync.runOnce();
   await sync.runStatusOnce();
   await appendFile(rolloutPath, JSON.stringify({
     type: 'event_msg', timestamp: '2026-01-01T00:00:10Z', payload: { type: 'turn_aborted' }
   }) + '\n');
-  await f.create().runStatusOnce();
+  await f.create(undefined, 'icon').runStatusOnce();
   assert.equal(f.edits.at(-1)?.iconId, '');
+});
+
+test('active Codex turn prefixes the topic name and completion restores its original name', async () => {
+  const f = await fixture();
+  const rolloutPath = join(f.root, 'rollout.jsonl');
+  f.setRolloutPath(rolloutPath);
+  await writeFile(rolloutPath, JSON.stringify({
+    type: 'event_msg', timestamp: '2026-01-01T00:00:00Z', payload: { type: 'task_started' }
+  }) + '\n');
+  const sync = f.create();
+  await sync.runOnce();
+  await sync.runStatusOnce();
+  assert.deepEqual(f.edits, [{ chatId: '-1001', topicId: 100, title: '⚡ Forked chat' }]);
+  assert.deepEqual(JSON.parse(await readFile(f.statePath, 'utf8')).statusTitles, {
+    'telegram:topic:-1001:100': { applied: true }
+  });
+  assert.equal(JSON.parse(await readFile(f.statePath, 'utf8')).icons, undefined);
+
+  await appendFile(rolloutPath, JSON.stringify({
+    type: 'event_msg', timestamp: '2026-01-01T00:00:10Z', payload: { type: 'task_complete' }
+  }) + '\n');
+  await sync.runStatusOnce();
+  assert.deepEqual(f.edits[1], { chatId: '-1001', topicId: 100, title: 'Forked chat' });
+  assert.deepEqual(JSON.parse(await readFile(f.statePath, 'utf8')).statusTitles, {});
+});
+
+test('title indicator survives restart and a Codex rename while the turn is active', async () => {
+  const f = await fixture();
+  const rolloutPath = join(f.root, 'rollout.jsonl');
+  f.setRolloutPath(rolloutPath);
+  await writeFile(rolloutPath, JSON.stringify({
+    type: 'event_msg', timestamp: '2026-01-01T00:00:00Z', payload: { type: 'task_started' }
+  }) + '\n');
+  const sync = f.create();
+  await sync.runOnce();
+  await sync.runStatusOnce();
+  f.threads[0]!.title = 'Renamed chat';
+  await sync.runOnce();
+  assert.equal(f.edits.at(-1)?.title, '⚡ Renamed chat');
+  assert.equal((await f.registry.readState()).platformBindings[0]?.surfaceLabel, 'Renamed chat');
+  await appendFile(rolloutPath, JSON.stringify({
+    type: 'event_msg', timestamp: '2026-01-01T00:00:10Z', payload: { type: 'turn_aborted' }
+  }) + '\n');
+  await f.create().runStatusOnce();
+  assert.equal(f.edits.at(-1)?.title, 'Renamed chat');
+});
+
+test('the first title-status pass removes a working icon left by the previous version', async () => {
+  const f = await fixture();
+  const rolloutPath = join(f.root, 'rollout.jsonl');
+  f.setRolloutPath(rolloutPath);
+  await writeFile(rolloutPath, JSON.stringify({
+    type: 'event_msg', timestamp: '2026-01-01T00:00:00Z', payload: { type: 'task_started' }
+  }) + '\n');
+  const sync = f.create(undefined, 'icon');
+  await sync.runOnce();
+  await sync.runStatusOnce();
+  const switched = f.create();
+  await switched.runStatusOnce();
+  assert.deepEqual(f.edits[1], { chatId: '-1001', topicId: 100, title: '', iconId: '' });
+  await switched.runStatusOnce();
+  assert.deepEqual(f.edits[2], { chatId: '-1001', topicId: 100, title: '⚡ Forked chat' });
 });
 
 test('a short turn does not flash the working icon', async () => {
@@ -152,7 +214,7 @@ test('a short turn does not flash the working icon', async () => {
   assert.deepEqual(f.edits, []);
 });
 
-test('Telegram rate limit pauses icon edits for all linked topics', async () => {
+test('Telegram rate limit pauses status edits for all linked topics', async () => {
   const f = await fixture(['-1001', '-1002']);
   const rolloutPath = join(f.root, 'rollout.jsonl');
   f.setRolloutPath(rolloutPath);

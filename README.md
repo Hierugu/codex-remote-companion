@@ -12,7 +12,7 @@ Codex Remote Companion is an alpha local-first messenger bridge. It runs on the 
 - Creates or repairs Telegram forum topics for project threads.
 - Automatically creates topics for new chats and forks in configured projects while the local server runs (one topic per scan, with a pause after Telegram rate limits).
 - Updates an existing Telegram topic when its linked Codex chat is renamed.
-- Shows a temporary working icon on linked topics while Codex is processing a turn, then restores the default topic icon. Short turns do not flash an icon.
+- Prefixes a linked topic name with `⚡` while Codex is processing a turn, then restores the original name. Short turns do not flash a status.
 - Supports `/new <name>` in General (choose a connected project with a button) or in a chat topic (use that chat's project), and `/fork <name>` inside a chat topic. New chats receive their own topics through the durable topic queue.
 - Receives Telegram messages from bound topics.
 - Sends those messages into the matching Codex thread.
