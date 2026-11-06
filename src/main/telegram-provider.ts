@@ -53,7 +53,6 @@ export interface TelegramUpdateMessage {
   messageThreadId: number | null;
   senderId: string | null;
   senderIsBot: boolean;
-  forumTopicEditedName?: string | null;
 }
 
 export interface TelegramInboundUpdate {
@@ -68,7 +67,6 @@ export interface TelegramInboundUpdate {
 }
 
 export interface TelegramBotProvider {
-  getForumTopicIconStickers(botToken: string): Promise<Array<{ emoji: string; customEmojiId: string }>>;
   getIdentity(botToken: string): Promise<TelegramBotIdentity>;
   getForumGroup(botToken: string, chatId: string): Promise<TelegramForumGroupInfo>;
   getBotPermissions(botToken: string, chatId: string): Promise<TelegramBotPermissions>;
@@ -86,15 +84,12 @@ export interface TelegramBotProvider {
     botToken: string,
     chatId: string,
     messageThreadId: number,
-    name: string,
-    iconCustomEmojiId?: string,
-    options?: { retryRateLimits?: boolean; retryTransientErrors?: boolean }
+    name: string
   ): Promise<void>;
   closeForumTopic(botToken: string, chatId: string, messageThreadId: number): Promise<void>;
   reopenForumTopic(botToken: string, chatId: string, messageThreadId: number): Promise<void>;
   sendMessage(botToken: string, input: TelegramSendMessageInput): Promise<TelegramSendMessageResult>;
   editMessage(botToken: string, input: TelegramEditMessageInput): Promise<TelegramSendMessageResult>;
-  deleteMessage(botToken: string, chatId: string, messageId: number): Promise<void>;
 }
 
 export class TelegramApiError extends Error {
@@ -244,7 +239,6 @@ export class HttpTelegramBotProvider implements TelegramBotProvider {
           message_thread_id?: number;
           chat: { id: number; type: string };
           from?: { id: number; is_bot?: boolean };
-          forum_topic_edited?: { name?: string };
         };
         callback_query?: {
           id: string;
@@ -273,8 +267,7 @@ export class HttpTelegramBotProvider implements TelegramBotProvider {
               typeof update.message.from?.id === 'number'
                 ? String(update.message.from.id)
                 : null,
-            senderIsBot: update.message.from?.is_bot === true,
-            forumTopicEditedName: update.message.forum_topic_edited?.name ?? null
+            senderIsBot: update.message.from?.is_bot === true
           }
         : null,
       callbackQuery: update.callback_query
@@ -294,17 +287,6 @@ export class HttpTelegramBotProvider implements TelegramBotProvider {
       callback_query_id: callbackQueryId,
       text
     });
-  }
-
-  async getForumTopicIconStickers(botToken: string): Promise<Array<{ emoji: string; customEmojiId: string }>> {
-    const stickers = await callTelegramApi<Array<{ emoji?: string; custom_emoji_id?: string }>>(
-      botToken, 'getForumTopicIconStickers', {}
-    );
-    return stickers
-      .filter((sticker): sticker is { emoji: string; custom_emoji_id: string } =>
-        typeof sticker.emoji === 'string' && typeof sticker.custom_emoji_id === 'string'
-      )
-      .map((sticker) => ({ emoji: sticker.emoji, customEmojiId: sticker.custom_emoji_id }));
   }
 
   async createForumTopic(
@@ -330,23 +312,13 @@ export class HttpTelegramBotProvider implements TelegramBotProvider {
     botToken: string,
     chatId: string,
     messageThreadId: number,
-    name: string,
-    iconCustomEmojiId?: string,
-    options?: { retryRateLimits?: boolean; retryTransientErrors?: boolean }
+    name: string
   ): Promise<void> {
     await callTelegramApi<boolean>(botToken, 'editForumTopic', {
       chat_id: chatId,
       message_thread_id: messageThreadId,
-      name: name || undefined,
-      icon_custom_emoji_id: iconCustomEmojiId
-    }, options);
-  }
-
-  async deleteMessage(botToken: string, chatId: string, messageId: number): Promise<void> {
-    await callTelegramApi<boolean>(botToken, 'deleteMessage', {
-      chat_id: chatId,
-      message_id: messageId
-    }, { retryRateLimits: false, retryTransientErrors: false });
+      name
+    });
   }
 
   async closeForumTopic(

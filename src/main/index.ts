@@ -102,8 +102,7 @@ const telegramPoller = new TelegramInboundPoller(
   telegramProvider,
   TELEGRAM_POLL_INTERVAL_MS,
   codexOutboundPoller,
-  telegramSessionCommands,
-  telegramTopicAutoSync
+  telegramSessionCommands
 );
 const productApi = new ProductApiService({
   getRuntimeState,
