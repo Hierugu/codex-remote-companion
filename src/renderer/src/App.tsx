@@ -776,6 +776,7 @@ export default function App() {
       setBootError('Renderer bridge is unavailable. Restart Codex Remote Companion.');
       return;
     }
+    let receivedRuntimeUpdate = false;
 
     void window.codexDesktop.getStartupSettings()
       .then(setStartupSettings)
@@ -785,21 +786,22 @@ export default function App() {
     void (async () => {
       try {
         const [
-          nextState,
           nextSnapshot,
           nextCodexProjects,
           nextProjects,
           nextTelegramConnection
         ] = await Promise.all([
-          window.codexDesktop.getBootstrapState(),
           window.codexDesktop.getCodexEnvironmentSnapshot(),
           window.codexDesktop.listCodexProjects(),
           window.codexDesktop.listProjects(),
           window.codexDesktop.validateTelegramConnection()
         ]);
         const nextChannelConnections = await window.codexDesktop.listChannelConnections();
+        const nextState = await window.codexDesktop.getBootstrapState();
 
-        setState(normalizeBootstrapState(nextState));
+        if (!receivedRuntimeUpdate) {
+          setState(normalizeBootstrapState(nextState));
+        }
         setSnapshot(nextSnapshot);
         applyTelegramSurfaceState({
           connection: nextTelegramConnection,
@@ -819,6 +821,7 @@ export default function App() {
     })();
 
     return window.codexDesktop.onRuntimeStateChanged((nextState) => {
+      receivedRuntimeUpdate = true;
       setState(normalizeBootstrapState(nextState));
       void refreshChannelConnections();
     });
