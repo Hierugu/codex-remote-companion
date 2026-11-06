@@ -358,7 +358,7 @@ export class TelegramTopicAutoSync {
         try {
           await this.provider.editForumTopic(
             config.botToken!, row.forumGroupId, topicId,
-            topicName(latest.surfaceLabel ?? 'Codex chat'), emojiId,
+            '', emojiId,
             { retryRateLimits: false, retryTransientErrors: false }
           );
         } catch (error) {

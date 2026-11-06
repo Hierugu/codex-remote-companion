@@ -333,7 +333,7 @@ export class HttpTelegramBotProvider implements TelegramBotProvider {
     await callTelegramApi<boolean>(botToken, 'editForumTopic', {
       chat_id: chatId,
       message_thread_id: messageThreadId,
-      name,
+      name: name || undefined,
       icon_custom_emoji_id: iconCustomEmojiId
     }, options);
   }

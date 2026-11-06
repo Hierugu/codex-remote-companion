@@ -105,14 +105,14 @@ test('active Codex turn changes a linked topic icon and completion restores its 
   const sync = f.create();
   await sync.runOnce();
   await sync.runStatusOnce();
-  assert.deepEqual(f.edits, [{ chatId: '-1001', topicId: 100, title: 'Forked chat', iconId: 'lightning-id' }]);
+  assert.deepEqual(f.edits, [{ chatId: '-1001', topicId: 100, title: '', iconId: 'lightning-id' }]);
   assert.equal(JSON.parse(await readFile(f.statePath, 'utf8')).icons['telegram:topic:-1001:100'].applied, true);
 
   await appendFile(rolloutPath, JSON.stringify({
     type: 'event_msg', timestamp: '2026-01-01T00:00:10Z', payload: { type: 'task_complete' }
   }) + '\n');
   await sync.runStatusOnce();
-  assert.deepEqual(f.edits[1], { chatId: '-1001', topicId: 100, title: 'Forked chat', iconId: '' });
+  assert.deepEqual(f.edits[1], { chatId: '-1001', topicId: 100, title: '', iconId: '' });
   assert.deepEqual(JSON.parse(await readFile(f.statePath, 'utf8')).icons, {});
   await sync.runStatusOnce();
   assert.equal(f.edits.length, 2);

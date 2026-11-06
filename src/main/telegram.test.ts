@@ -565,10 +565,12 @@ test('Telegram provider lists allowed topic icons and can restore the default ic
     assert.deepEqual(await provider.getForumTopicIconStickers('123:token'), [
       { emoji: '⚡', customEmojiId: 'icon-1' }
     ]);
-    await provider.editForumTopic('123:token', '-100405', 42, 'Topic', 'icon-1');
-    await provider.editForumTopic('123:token', '-100405', 42, 'Topic', '');
+    await provider.editForumTopic('123:token', '-100405', 42, '', 'icon-1');
+    await provider.editForumTopic('123:token', '-100405', 42, '', '');
     assert.equal(requests[1]?.body.icon_custom_emoji_id, 'icon-1');
     assert.equal(requests[2]?.body.icon_custom_emoji_id, '');
+    assert.equal('name' in requests[1]!.body, false);
+    assert.equal('name' in requests[2]!.body, false);
   } finally {
     globalThis.fetch = originalFetch;
   }
