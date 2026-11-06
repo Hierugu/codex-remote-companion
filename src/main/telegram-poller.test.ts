@@ -95,6 +95,8 @@ class FakeTelegramPollingProvider implements TelegramBotProvider {
 
   async editForumTopic(): Promise<void> {}
 
+  async deleteMessage(): Promise<void> {}
+
   async closeForumTopic(): Promise<void> {}
 
   async reopenForumTopic(): Promise<void> {}
@@ -159,6 +161,35 @@ test('TelegramInboundPoller routes General commands and project callbacks before
   assert.deepEqual(calls, ['/new Review auth', 'crc:new:700:0']);
   assert.equal(result.processed, 2);
   assert.equal(lastUpdateId, 701);
+});
+
+test('TelegramInboundPoller passes topic rename service updates to cleanup', async () => {
+  const provider = new FakeTelegramPollingProvider();
+  provider.updates = [{ updateId: 702, message: {
+    messageId: 55, text: null, chatId: '-1001', chatType: 'supergroup',
+    messageThreadId: 100, senderId: '9001', senderIsBot: true,
+    forumTopicEditedName: '⚡ Forked chat'
+  } }];
+  const handled: number[] = [];
+  let lastUpdateId: number | null = null;
+  const poller = new TelegramInboundPoller(
+    {
+      getPollingConfig: async () => ({ botToken: 'token', ownerUserId: '12345', lastUpdateId }),
+      recordLastUpdateId: async (id: number) => { lastUpdateId = id; },
+      recordIssue: async () => undefined
+    } as never,
+    {} as never,
+    { handleInboundEvent: async () => { throw new Error('unexpected'); } },
+    { resumeAndRun: async () => { throw new Error('unexpected'); } },
+    fakeSlashCommandService(), provider, 10, undefined, undefined,
+    { handleTopicEditedMessage: async (message) => {
+      handled.push(message.messageId);
+      return true;
+    } }
+  );
+  assert.equal((await poller.pollOnce()).processed, 1);
+  assert.deepEqual(handled, [55]);
+  assert.equal(lastUpdateId, 702);
 });
 
 async function seedTelegramProject(registry: PersistentBackendRegistry) {

@@ -12,7 +12,7 @@ import { readLatestCodexTurnActivity, type CodexTurnActivity } from './codex-tur
 import { getCompanionStatePath } from './companion-paths';
 import { parseJsonWithRecovery, writeJsonAtomically } from './json-file';
 import type { TelegramConfigStore } from './telegram-config';
-import { TelegramApiError, type TelegramBotProvider } from './telegram-provider';
+import { TelegramApiError, type TelegramBotProvider, type TelegramUpdateMessage } from './telegram-provider';
 import { TelegramTopicCreationGate } from './telegram-topic-gate';
 
 type JobStatus = 'queued' | 'creating' | 'created' | 'needsReview';
@@ -33,6 +33,14 @@ interface TopicJobFile {
   requested?: Record<string, { rowId: string; codexThreadId: string; projectId: string; title: string }>;
   icons?: Record<string, { emojiId: string; applied: boolean; retryAt?: number }>;
   statusTitles?: Record<string, { applied: boolean; retryAt?: number }>;
+  topicRenameMessages?: Array<{
+    chatId: string;
+    topicId: number;
+    name: string;
+    createdAt: number;
+    messageId?: number;
+    retryAt?: number;
+  }>;
 }
 
 interface Candidate {
@@ -53,6 +61,7 @@ interface RenameCandidate {
 const POLL_INTERVAL_MS = 30_000;
 const STATUS_POLL_INTERVAL_MS = 3_000;
 const BUSY_STATUS_DELAY_MS = 2_000;
+const RENAME_MESSAGE_LIFETIME_MS = 48 * 60 * 60 * 1000;
 
 function jobKey(rowId: string, threadId: string): string {
   return `${rowId}:${threadId}`;
@@ -84,12 +93,31 @@ export class TelegramTopicAutoSync {
     private readonly registry: Pick<PersistentBackendRegistry,
       'readState' | 'linkCodexThreadToTelegramTopic' | 'upsertProjectThread' | 'upsertPlatformBinding'>,
     private readonly provider: Pick<TelegramBotProvider,
-      'createForumTopic' | 'editForumTopic' | 'getForumTopicIconStickers'>,
+      'createForumTopic' | 'editForumTopic' | 'getForumTopicIconStickers' | 'deleteMessage'>,
     private readonly topicGate: TelegramTopicCreationGate,
     private readonly statePath = getCompanionStatePath('telegram-topic-jobs.json'),
     private readonly onError: (message: string) => void = console.error,
     private readonly statusIndicatorMode: 'title' | 'icon' = 'title'
   ) {}
+
+  async handleTopicEditedMessage(message: TelegramUpdateMessage): Promise<boolean> {
+    if (!message.forumTopicEditedName || !message.messageThreadId) return false;
+    const config = await this.configStore.readState();
+    if (!config.botUserId || message.senderId !== config.botUserId) return false;
+    let matched = false;
+    await this.mutateJobs((state) => {
+      const entry = state.topicRenameMessages?.find((item) =>
+        item.chatId === message.chatId && item.topicId === message.messageThreadId &&
+        item.name === message.forumTopicEditedName && !item.messageId &&
+        Date.now() - item.createdAt < 5 * 60_000
+      );
+      if (!entry) return;
+      entry.messageId = message.messageId;
+      matched = true;
+    });
+    if (matched && this.running) void this.statusTick();
+    return matched;
+  }
 
   start(): void {
     if (this.running) return;
@@ -297,10 +325,11 @@ export class TelegramTopicAutoSync {
       });
       try {
         const statusTitles = (await this.readJobs()).statusTitles;
+        const name = statusTopicName(candidate.thread.title,
+          this.statusIndicatorMode === 'title' && Boolean(statusTitles?.[latestBinding.surfaceId]));
+        await this.recordTopicRename(candidate.chatId, topicId, name);
         await this.provider.editForumTopic(
-          candidate.botToken, candidate.chatId, topicId,
-          statusTopicName(candidate.thread.title,
-            this.statusIndicatorMode === 'title' && Boolean(statusTitles?.[latestBinding.surfaceId]))
+          candidate.botToken, candidate.chatId, topicId, name
         );
       } catch (error) {
         if (error instanceof TelegramApiError && error.status === 429) {
@@ -324,6 +353,7 @@ export class TelegramTopicAutoSync {
   async runStatusOnce(): Promise<void> {
     const config = await this.configStore.readState();
     if (!config.botToken) return;
+    await this.cleanupTopicRenameMessage(config.botToken);
     const jobs = await this.readJobs();
     if ((jobs.rateLimitUntil ?? 0) > Date.now()) return;
     await this.refreshActivityPaths();
@@ -399,6 +429,10 @@ export class TelegramTopicAutoSync {
           });
         }
         try {
+          if (this.statusIndicatorMode === 'title') {
+            await this.recordTopicRename(row.forumGroupId, topicId,
+              statusTopicName(latest.surfaceLabel ?? 'Codex chat', active));
+          }
           await this.provider.editForumTopic(
             config.botToken!, row.forumGroupId, topicId,
             this.statusIndicatorMode === 'title'
@@ -444,6 +478,37 @@ export class TelegramTopicAutoSync {
       if (thread.path) this.activityPaths.set(thread.id, thread.path);
     }
     this.pathsRefreshedAt = Date.now();
+  }
+
+  private async recordTopicRename(chatId: string, topicId: number, name: string): Promise<void> {
+    await this.mutateJobs((state) => {
+      state.topicRenameMessages = (state.topicRenameMessages ?? [])
+        .filter((entry) => Date.now() - entry.createdAt < RENAME_MESSAGE_LIFETIME_MS);
+      state.topicRenameMessages.push({ chatId, topicId, name, createdAt: Date.now() });
+    });
+  }
+
+  private async cleanupTopicRenameMessage(botToken: string): Promise<void> {
+    const entry = (await this.readJobs()).topicRenameMessages?.find((item) =>
+      item.messageId && (item.retryAt ?? 0) <= Date.now()
+    );
+    if (!entry?.messageId) return;
+    try {
+      await this.provider.deleteMessage(botToken, entry.chatId, entry.messageId);
+      await this.mutateJobs((state) => {
+        state.topicRenameMessages = state.topicRenameMessages?.filter((item) =>
+          item.chatId !== entry.chatId || item.messageId !== entry.messageId);
+      });
+    } catch (error) {
+      const retryAt = Date.now() + (error instanceof TelegramApiError && error.status === 429
+        ? ((error.retryAfterSeconds ?? 30) + 1) * 1000 : 5 * 60_000);
+      await this.mutateJobs((state) => {
+        const pending = state.topicRenameMessages?.find((item) =>
+          item.chatId === entry.chatId && item.messageId === entry.messageId);
+        if (pending) pending.retryAt = retryAt;
+      });
+      this.onError(`Telegram topic rename message cleanup failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
   }
 
   private async readActivity(path: string): Promise<CodexTurnActivity | null> {

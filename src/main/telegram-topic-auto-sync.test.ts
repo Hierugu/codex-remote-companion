@@ -20,7 +20,7 @@ async function fixture(chatIds = ['-1001']) {
     id: `row-${index}`, forumGroupId: chatId, forumGroupTitle: 'Forum',
     projectId: 'project-1', setupCompletedAt: '2026-01-01T00:00:00Z', lastIssue: null
   }));
-  const config = { readState: async () => ({ botToken: 'test-token', rows }) };
+  const config = { readState: async () => ({ botToken: 'test-token', botUserId: '9001', rows }) };
   const threads = [{
     id: 'thread-1', title: 'Forked chat', updatedAt: '2026-01-01T00:00:00Z',
     archived: false, cwd: '/project'
@@ -32,6 +32,7 @@ async function fixture(chatIds = ['-1001']) {
   };
   const calls: string[] = [];
   const edits: Array<{ chatId: string; topicId: number; title: string; iconId?: string }> = [];
+  const deletions: Array<{ chatId: string; messageId: number }> = [];
   let nextTopicId = 100;
   const provider = {
     getForumTopicIconStickers: async () => [{ emoji: '⚡', customEmojiId: 'lightning-id' }],
@@ -41,6 +42,9 @@ async function fixture(chatIds = ['-1001']) {
     },
     editForumTopic: async (_token: string, chatId: string, topicId: number, title: string, iconId?: string) => {
       edits.push({ chatId, topicId, title, ...(iconId === undefined ? {} : { iconId }) });
+    },
+    deleteMessage: async (_token: string, chatId: string, messageId: number) => {
+      deletions.push({ chatId, messageId });
     }
   };
   const statePath = join(root, 'jobs.json');
@@ -48,7 +52,7 @@ async function fixture(chatIds = ['-1001']) {
   const create = (registryValue: any = registry, mode: 'title' | 'icon' = 'title') => new TelegramTopicAutoSync(
     config as any, store as any, registryValue, provider as any, gate, statePath, () => undefined, mode
   );
-  return { registry, config, threads, provider, calls, edits, statePath, create,
+  return { registry, config, threads, provider, calls, edits, deletions, statePath, create,
     setRolloutPath: (path: string) => { rolloutPath = path; }, root };
 }
 
@@ -157,6 +161,39 @@ test('active Codex turn prefixes the topic name and completion restores its orig
   await sync.runStatusOnce();
   assert.deepEqual(f.edits[1], { chatId: '-1001', topicId: 100, title: 'Forked chat' });
   assert.deepEqual(JSON.parse(await readFile(f.statePath, 'utf8')).statusTitles, {});
+});
+
+test('only Companion topic rename service messages are deleted after status changes', async () => {
+  const f = await fixture();
+  const rolloutPath = join(f.root, 'rollout.jsonl');
+  f.setRolloutPath(rolloutPath);
+  await writeFile(rolloutPath, JSON.stringify({
+    type: 'event_msg', timestamp: '2026-01-01T00:00:00Z', payload: { type: 'task_started' }
+  }) + '\n');
+  const sync = f.create();
+  await sync.runOnce();
+  await sync.runStatusOnce();
+  const serviceMessage = (name: string, senderId = '9001', topicId = 100, messageId = 10) => ({
+    messageId, text: null, chatId: '-1001', chatType: 'supergroup',
+    messageThreadId: topicId, senderId, senderIsBot: senderId === '9001',
+    forumTopicEditedName: name
+  });
+  assert.equal(await sync.handleTopicEditedMessage(serviceMessage('⚡ Forked chat', 'other')), false);
+  assert.equal(await sync.handleTopicEditedMessage(serviceMessage('⚡ Forked chat', '9001', 101)), false);
+  assert.equal(await sync.handleTopicEditedMessage(serviceMessage('Manual rename')), false);
+  assert.equal(await sync.handleTopicEditedMessage(serviceMessage('⚡ Forked chat')), true);
+  await sync.runStatusOnce();
+  assert.deepEqual(f.deletions, [{ chatId: '-1001', messageId: 10 }]);
+
+  await appendFile(rolloutPath, JSON.stringify({
+    type: 'event_msg', timestamp: '2026-01-01T00:00:10Z', payload: { type: 'task_complete' }
+  }) + '\n');
+  await sync.runStatusOnce();
+  assert.equal(await f.create().handleTopicEditedMessage(serviceMessage('Forked chat', '9001', 100, 11)), true);
+  await f.create().runStatusOnce();
+  assert.deepEqual(f.deletions, [
+    { chatId: '-1001', messageId: 10 }, { chatId: '-1001', messageId: 11 }
+  ]);
 });
 
 test('title indicator survives restart and a Codex rename while the turn is active', async () => {

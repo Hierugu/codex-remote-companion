@@ -5,7 +5,7 @@ import type {
   CodexThreadExecutionResult
 } from './codex-thread-executor';
 import { TelegramConfigStore } from './telegram-config';
-import type { TelegramBotProvider } from './telegram-provider';
+import type { TelegramBotProvider, TelegramUpdateMessage } from './telegram-provider';
 import { TelegramService } from './telegram-service';
 import type { TelegramSlashCommandResult, TelegramSlashCommandService } from './telegram-slash-commands';
 import type { TelegramSessionCommands } from './telegram-session-commands';
@@ -68,7 +68,8 @@ export class TelegramInboundPoller {
     private readonly provider: TelegramBotProvider,
     private readonly pollIntervalMs = 500,
     private readonly outboundMirror?: OutboundMirror,
-    private readonly sessionCommands?: Pick<TelegramSessionCommands, 'handleMessage' | 'handleCallback'>
+    private readonly sessionCommands?: Pick<TelegramSessionCommands, 'handleMessage' | 'handleCallback'>,
+    private readonly topicRenameCleanup?: { handleTopicEditedMessage(message: TelegramUpdateMessage): Promise<boolean> }
   ) {}
 
   isRunning(): boolean {
@@ -125,6 +126,16 @@ export class TelegramInboundPoller {
       }
 
       const message = update.message;
+      if (message?.forumTopicEditedName) {
+        try {
+          if (await this.topicRenameCleanup?.handleTopicEditedMessage(message)) processed += 1;
+          else skipped += 1;
+        } catch (error) {
+          skipped += 1;
+          await this.configStore.recordIssue(error instanceof Error ? error.message : String(error));
+        }
+        continue;
+      }
       if (!message || message.senderIsBot || message.senderId !== config.ownerUserId || !message.text?.trim()) {
         skipped += 1;
         continue;

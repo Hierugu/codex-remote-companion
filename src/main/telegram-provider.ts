@@ -53,6 +53,7 @@ export interface TelegramUpdateMessage {
   messageThreadId: number | null;
   senderId: string | null;
   senderIsBot: boolean;
+  forumTopicEditedName?: string | null;
 }
 
 export interface TelegramInboundUpdate {
@@ -93,6 +94,7 @@ export interface TelegramBotProvider {
   reopenForumTopic(botToken: string, chatId: string, messageThreadId: number): Promise<void>;
   sendMessage(botToken: string, input: TelegramSendMessageInput): Promise<TelegramSendMessageResult>;
   editMessage(botToken: string, input: TelegramEditMessageInput): Promise<TelegramSendMessageResult>;
+  deleteMessage(botToken: string, chatId: string, messageId: number): Promise<void>;
 }
 
 export class TelegramApiError extends Error {
@@ -242,6 +244,7 @@ export class HttpTelegramBotProvider implements TelegramBotProvider {
           message_thread_id?: number;
           chat: { id: number; type: string };
           from?: { id: number; is_bot?: boolean };
+          forum_topic_edited?: { name?: string };
         };
         callback_query?: {
           id: string;
@@ -270,7 +273,8 @@ export class HttpTelegramBotProvider implements TelegramBotProvider {
               typeof update.message.from?.id === 'number'
                 ? String(update.message.from.id)
                 : null,
-            senderIsBot: update.message.from?.is_bot === true
+            senderIsBot: update.message.from?.is_bot === true,
+            forumTopicEditedName: update.message.forum_topic_edited?.name ?? null
           }
         : null,
       callbackQuery: update.callback_query
@@ -336,6 +340,13 @@ export class HttpTelegramBotProvider implements TelegramBotProvider {
       name: name || undefined,
       icon_custom_emoji_id: iconCustomEmojiId
     }, options);
+  }
+
+  async deleteMessage(botToken: string, chatId: string, messageId: number): Promise<void> {
+    await callTelegramApi<boolean>(botToken, 'deleteMessage', {
+      chat_id: chatId,
+      message_id: messageId
+    }, { retryRateLimits: false, retryTransientErrors: false });
   }
 
   async closeForumTopic(
