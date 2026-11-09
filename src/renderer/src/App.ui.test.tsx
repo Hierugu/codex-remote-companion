@@ -1,11 +1,13 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { renderToStaticMarkup } from 'react-dom/server';
 
 import type { StatusBadgeState, TelegramConnectionState } from '@shared/contracts';
 
 import {
   buildCodexDetectionSummary,
   buildRateLimitCardModel,
+  RateLimitCard,
   buildTelegramDraftRows,
   getActiveThreadsButtonModel,
   getChannelStatusForServerState,
@@ -159,9 +161,11 @@ test('rate limit card model shows countdown and reserve math from local window d
   assert.equal(session.resetsText, 'Resets in 4h 12m');
   assert.equal(session.reserveText, null);
   assert.equal(session.paceText, null);
+  assert.equal(session.isWeeklyWindow, false);
 
   const weekly = buildRateLimitCardModel(10080, 76, '2026-04-24T09:00:00.000Z', now);
   assert.equal(weekly.label, 'Weekly remaining');
+  assert.equal(weekly.isWeeklyWindow, true);
   assert.equal(weekly.resetsText, 'Resets in 3d 23h');
   assert.equal(weekly.reserveText, '19% in reserve');
   assert.equal(weekly.paceText, 'Lasts until reset');
@@ -173,6 +177,15 @@ test('rate limit card model flags overspend pace when remaining budget is below 
 
   assert.equal(weekly.reserveText, '17% over pace');
   assert.equal(weekly.paceText, 'May run out early');
+});
+
+test('daily ticks follow the seven-day window even when it occupies the primary row', () => {
+  const primary = buildRateLimitCardModel(10080, 92, '2026-04-27T09:00:00.000Z');
+  const secondary = buildRateLimitCardModel(null, null, null);
+  const upper = renderToStaticMarkup(<RateLimitCard model={primary} accent="session" />);
+  const lower = renderToStaticMarkup(<RateLimitCard model={secondary} accent="weekly" />);
+  assert.equal((upper.match(/rate-limit-row__day-tick/g) ?? []).length, 6);
+  assert.equal((lower.match(/rate-limit-row__day-tick/g) ?? []).length, 0);
 });
 
 test('telegram token button uses Save only before first token and Replace afterwards', () => {

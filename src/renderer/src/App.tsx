@@ -435,6 +435,7 @@ interface RateLimitCardModel {
   paceText: string | null;
   fillPercent: number | null;
   reserveThresholdPercent: number | null;
+  isWeeklyWindow: boolean;
 }
 
 export function buildRateLimitCardModel(
@@ -466,7 +467,8 @@ export function buildRateLimitCardModel(
       reserveText: null,
       paceText: null,
       fillPercent: remainingPercent === null ? null : clampPercent(remainingPercent),
-      reserveThresholdPercent: null
+      reserveThresholdPercent: null,
+      isWeeklyWindow
     };
   }
 
@@ -480,7 +482,8 @@ export function buildRateLimitCardModel(
       reserveText: null,
       paceText: null,
       fillPercent: clampPercent(remainingPercent),
-      reserveThresholdPercent: null
+      reserveThresholdPercent: null,
+      isWeeklyWindow
     };
   }
 
@@ -505,11 +508,12 @@ export function buildRateLimitCardModel(
     reserveText,
     paceText,
     fillPercent: clampPercent(remainingPercent),
-    reserveThresholdPercent: isWeeklyWindow ? thresholdPercent : null
+    reserveThresholdPercent: isWeeklyWindow ? thresholdPercent : null,
+    isWeeklyWindow
   };
 }
 
-function RateLimitCard({
+export function RateLimitCard({
   model,
   accent
 }: {
@@ -527,7 +531,7 @@ function RateLimitCard({
           className="rate-limit-row__fill"
           style={{ width: `${model.fillPercent ?? 0}%` }}
         />
-        {accent === 'weekly' ? Array.from({ length: 6 }, (_, index) => (
+        {model.isWeeklyWindow ? Array.from({ length: 6 }, (_, index) => (
           <span
             key={index}
             className="rate-limit-row__day-tick"
