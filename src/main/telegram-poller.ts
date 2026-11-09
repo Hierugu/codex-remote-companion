@@ -9,6 +9,7 @@ import type { TelegramBotProvider } from './telegram-provider';
 import { TelegramService } from './telegram-service';
 import type { TelegramSlashCommandResult, TelegramSlashCommandService } from './telegram-slash-commands';
 import type { TelegramSessionCommands } from './telegram-session-commands';
+import type { TelegramAppReleaseCommands } from './telegram-app-release';
 
 interface InboundControlPlane {
   handleInboundEvent(event: NormalizedInboundEvent): Promise<ControlPlaneDispatchReceipt>;
@@ -68,7 +69,8 @@ export class TelegramInboundPoller {
     private readonly provider: TelegramBotProvider,
     private readonly pollIntervalMs = 500,
     private readonly outboundMirror?: OutboundMirror,
-    private readonly sessionCommands?: Pick<TelegramSessionCommands, 'handleMessage' | 'handleCallback'>
+    private readonly sessionCommands?: Pick<TelegramSessionCommands, 'handleMessage' | 'handleCallback'>,
+    private readonly releaseCommands?: Pick<TelegramAppReleaseCommands, 'handleMessage' | 'handleCallback'>
   ) {}
 
   isRunning(): boolean {
@@ -115,7 +117,8 @@ export class TelegramInboundPoller {
 
       if (update.callbackQuery) {
         try {
-          if (await this.sessionCommands?.handleCallback(update.callbackQuery)) processed += 1;
+          if (await this.releaseCommands?.handleCallback(update.callbackQuery)) processed += 1;
+          else if (await this.sessionCommands?.handleCallback(update.callbackQuery)) processed += 1;
           else skipped += 1;
         } catch (error) {
           skipped += 1;
@@ -133,6 +136,10 @@ export class TelegramInboundPoller {
       let acknowledgement: { messageId: number } | null = null;
       let projectThreadId: string | null = null;
       try {
+        if (await this.releaseCommands?.handleMessage(message)) {
+          processed += 1;
+          continue;
+        }
         if (await this.sessionCommands?.handleMessage(update.updateId, message)) {
           processed += 1;
           continue;

@@ -11,6 +11,10 @@ files:
   - out/**/*
   - package.json
 
+extraResources:
+  - from: build/remote-app-control
+    to: bin/remote-app-control
+
 mac:
   category: public.app-category.developer-tools
   icon: build/icon.png

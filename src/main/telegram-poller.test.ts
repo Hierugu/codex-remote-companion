@@ -160,6 +160,40 @@ test('TelegramInboundPoller routes General commands and project callbacks before
   assert.equal(lastUpdateId, 701);
 });
 
+test('TelegramInboundPoller handles /release before trying to resume a locked chat', async () => {
+  const provider = new FakeTelegramPollingProvider();
+  provider.updates = [
+    { updateId: 702, message: {
+      messageId: 3, text: '/release', chatId: '-1001', chatType: 'supergroup',
+      messageThreadId: 55, senderId: '12345', senderIsBot: false
+    } },
+    { updateId: 703, message: null, callbackQuery: {
+      id: 'release-confirm', data: 'crc:release:123456789abcdef0:b',
+      chatId: '-1001', senderId: '12345'
+    } }
+  ];
+  const calls: string[] = [];
+  let lastUpdateId: number | null = null;
+  const poller = new TelegramInboundPoller(
+    {
+      getPollingConfig: async () => ({ botToken: 'token', ownerUserId: '12345', lastUpdateId }),
+      recordLastUpdateId: async (id: number) => { lastUpdateId = id; },
+      recordIssue: async () => undefined
+    } as never,
+    { normalizeInboundMessage: async () => { throw new Error('must not resume'); } } as never,
+    { handleInboundEvent: async () => { throw new Error('must not dispatch'); } },
+    { resumeAndRun: async () => { throw new Error('must not run'); } },
+    fakeSlashCommandService(), provider, 10, undefined, undefined,
+    {
+      handleMessage: async (message) => { calls.push(message.text ?? ''); return true; },
+      handleCallback: async (callback) => { calls.push(callback.data ?? ''); return true; }
+    }
+  );
+  assert.equal((await poller.pollOnce()).processed, 2);
+  assert.deepEqual(calls, ['/release', 'crc:release:123456789abcdef0:b']);
+  assert.equal(lastUpdateId, 703);
+});
+
 async function seedTelegramProject(registry: PersistentBackendRegistry) {
   await registry.ensureBootstrap({
     installId: 'install-telegram-poller',

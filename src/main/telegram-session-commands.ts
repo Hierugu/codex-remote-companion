@@ -70,7 +70,8 @@ export class TelegramSessionCommands {
       if (!config.rows.some((row) => row.forumGroupId === message.chatId && row.setupCompletedAt)) return false;
       await this.reply(message.chatId, null,
         'Group commands:\n/new <name> — create a Codex chat; choose its project with a button.\n' +
-        '/fork <name> — send inside an existing chat topic to fork its history.');
+        '/fork <name> — send inside an existing chat topic to fork its history.\n' +
+        '/release — close VS Code or Codex app after confirmation.');
       return true;
     }
     const match = /^\/(new|fork)(?:@\w+)?(?:\s+([\s\S]*))?$/i.exec(message.text?.trim() ?? '');

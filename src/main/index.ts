@@ -44,6 +44,8 @@ import { StartupSettingsStore } from './startup-settings';
 import { TelegramTopicCreationGate } from './telegram-topic-gate';
 import { TelegramTopicAutoSync } from './telegram-topic-auto-sync';
 import { TelegramSessionCommands } from './telegram-session-commands';
+import { MacAppControl } from './mac-app-control';
+import { TelegramAppReleaseCommands } from './telegram-app-release';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const TELEGRAM_POLL_INTERVAL_MS = 3000;
@@ -77,6 +79,13 @@ const telegramSessionCommands = new TelegramSessionCommands(
   telegramProvider,
   telegramTopicAutoSync
 );
+const telegramAppReleaseCommands = new TelegramAppReleaseCommands(
+  telegramConfigStore,
+  telegramProvider,
+  new MacAppControl(app.isPackaged
+    ? join(process.resourcesPath, 'bin', 'remote-app-control')
+    : join(process.cwd(), 'build', 'remote-app-control'))
+);
 const codexExecutor = new CodexThreadExecutor(codexStore);
 const remoteExecutionSettingsService = new RemoteExecutionSettingsService(
   remoteExecutionSettingsStore,
@@ -102,7 +111,8 @@ const telegramPoller = new TelegramInboundPoller(
   telegramProvider,
   TELEGRAM_POLL_INTERVAL_MS,
   codexOutboundPoller,
-  telegramSessionCommands
+  telegramSessionCommands,
+  telegramAppReleaseCommands
 );
 const productApi = new ProductApiService({
   getRuntimeState,

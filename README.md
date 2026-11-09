@@ -13,6 +13,7 @@ Codex Remote Companion is an alpha local-first messenger bridge. It runs on the 
 - Automatically creates topics for new chats and forks in configured projects while the local server runs (one topic per scan, with a pause after Telegram rate limits).
 - Updates an existing Telegram topic when its linked Codex chat is renamed.
 - Supports `/new <name>` in General (choose a connected project with a button) or in a chat topic (use that chat's project), and `/fork <name>` inside a chat topic. New chats receive their own topics through the durable topic queue.
+- Supports `/release` in a connected Telegram group or topic. After owner confirmation, Companion asks macOS to quit VS Code, Codex app, or both normally, then reports whether they exited. It never force-quits apps or discards unsaved work.
 - Receives Telegram messages from bound topics.
 - Sends those messages into the matching Codex thread.
 - Sends progress updates and the final assistant reply back to Telegram.

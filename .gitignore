@@ -2,6 +2,7 @@ node_modules
 out
 dist
 release
+build/remote-app-control
 .DS_Store
 agents/
 archive.zip
