@@ -62,6 +62,7 @@ export interface TelegramInboundUpdate {
     id: string;
     data: string | null;
     chatId: string | null;
+    messageId: number | null;
     senderId: string;
   } | null;
 }
@@ -75,6 +76,7 @@ export interface TelegramBotProvider {
     input: { offset?: number; timeoutSeconds?: number; limit?: number }
   ): Promise<TelegramInboundUpdate[]>;
   answerCallbackQuery(botToken: string, callbackQueryId: string, text?: string): Promise<void>;
+  clearInlineKeyboard(botToken: string, chatId: string, messageId: number): Promise<void>;
   createForumTopic(
     botToken: string,
     chatId: string,
@@ -244,7 +246,7 @@ export class HttpTelegramBotProvider implements TelegramBotProvider {
           id: string;
           data?: string;
           from: { id: number };
-          message?: { chat: { id: number } };
+          message?: { message_id: number; chat: { id: number } };
         };
       }>
     >(botToken, 'getUpdates', {
@@ -276,6 +278,7 @@ export class HttpTelegramBotProvider implements TelegramBotProvider {
             data: update.callback_query.data ?? null,
             chatId: update.callback_query.message
               ? String(update.callback_query.message.chat.id) : null,
+            messageId: update.callback_query.message?.message_id ?? null,
             senderId: String(update.callback_query.from.id)
           }
         : null
@@ -287,6 +290,13 @@ export class HttpTelegramBotProvider implements TelegramBotProvider {
       callback_query_id: callbackQueryId,
       text
     });
+  }
+
+  async clearInlineKeyboard(botToken: string, chatId: string, messageId: number): Promise<void> {
+    await callTelegramApi<unknown>(botToken, 'editMessageReplyMarkup', {
+      chat_id: chatId,
+      message_id: messageId
+    }, { retryRateLimits: false });
   }
 
   async createForumTopic(

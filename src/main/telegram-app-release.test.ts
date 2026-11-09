@@ -7,6 +7,7 @@ import type { TelegramSendMessageInput, TelegramUpdateMessage } from './telegram
 function fixture() {
   const sent: TelegramSendMessageInput[] = [];
   const answers: string[] = [];
+  const cleared: Array<{ chatId: string; messageId: number }> = [];
   const quitCalls: string[][] = [];
   let now = 1000;
   let status = { vscode: true, codex: true };
@@ -25,6 +26,9 @@ function fixture() {
       },
       answerCallbackQuery: async (_token: string, _id: string, text?: string) => {
         answers.push(text ?? '');
+      },
+      clearInlineKeyboard: async (_token: string, chatId: string, messageId: number) => {
+        cleared.push({ chatId, messageId });
       }
     },
     {
@@ -40,7 +44,7 @@ function fixture() {
     messageId: 1, text, chatId, chatType: 'supergroup', messageThreadId: 55,
     senderId, senderIsBot: false
   });
-  return { commands, sent, answers, quitCalls, message,
+  return { commands, sent, answers, cleared, quitCalls, message,
     setNow: (value: number) => { now = value; },
     setStatus: (value: typeof status) => { status = value; },
     setExited: (value: typeof exited) => { exited = value; } };
@@ -59,6 +63,7 @@ test('/release requires owner confirmation and closes only selected apps', async
   assert.deepEqual(f.quitCalls, []);
   await f.commands.handleCallback({ id: 'confirmed', data: closeBoth, chatId: '-1001', senderId: '123' });
   assert.deepEqual(f.quitCalls, [['vscode', 'codex']]);
+  assert.deepEqual(f.cleared, [{ chatId: '-1001', messageId: 1 }]);
   assert.match(f.sent.at(-1)?.text ?? '', /VS Code: closed/);
   await f.commands.handleCallback({ id: 'duplicate', data: closeBoth, chatId: '-1001', senderId: '123' });
   assert.equal(f.quitCalls.length, 1);
@@ -72,6 +77,7 @@ test('/release reports a blocked quit and rejects expired confirmations', async 
   const closeVSCode = f.sent[0]!.inlineKeyboard![0]![0]!.callbackData;
   await f.commands.handleCallback({ id: 'confirmed', data: closeVSCode, chatId: '-1001', senderId: '123' });
   assert.deepEqual(f.quitCalls, [['vscode']]);
+  assert.deepEqual(f.cleared, [{ chatId: '-1001', messageId: 1 }]);
   assert.match(f.sent.at(-1)?.text ?? '', /still open.*save dialog/);
 
   await f.commands.handleMessage(f.message('/release'));
@@ -80,4 +86,22 @@ test('/release reports a blocked quit and rejects expired confirmations', async 
   await f.commands.handleCallback({ id: 'expired', data: expired, chatId: '-1001', senderId: '123' });
   assert.equal(f.quitCalls.length, 1);
   assert.match(f.answers.at(-1) ?? '', /expired/);
+});
+
+test('/release removes buttons on cancel and when an old confirmation is tapped', async () => {
+  const f = fixture();
+  await f.commands.handleMessage(f.message('/release'));
+  const cancel = f.sent[0]!.inlineKeyboard!.at(-1)![0]!.callbackData;
+  await f.commands.handleCallback({
+    id: 'cancel', data: cancel, chatId: '-1001', messageId: 1, senderId: '123'
+  });
+  assert.deepEqual(f.cleared, [{ chatId: '-1001', messageId: 1 }]);
+  assert.deepEqual(f.quitCalls, []);
+
+  await f.commands.handleCallback({
+    id: 'old', data: 'crc:release:123456789abcdef0:b',
+    chatId: '-1001', messageId: 77, senderId: '123'
+  });
+  assert.deepEqual(f.cleared.at(-1), { chatId: '-1001', messageId: 77 });
+  assert.deepEqual(f.quitCalls, []);
 });

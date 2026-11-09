@@ -22,6 +22,7 @@ import { TelegramService } from './telegram-service';
 
 class FakeTelegramBotProvider implements TelegramBotProvider {
   async answerCallbackQuery(): Promise<void> {}
+  async clearInlineKeyboard(): Promise<void> {}
   readonly createdTopics: Array<{ chatId: string; name: string }> = [];
 
   readonly editedTopics: Array<{ chatId: string; messageThreadId: number; name: string }> = [];
@@ -522,7 +523,7 @@ test('Telegram provider receives project buttons and callback queries', async ()
     if (method === 'getUpdates') return Response.json({ ok: true, result: [{
       update_id: 25, callback_query: {
         id: 'callback-1', data: 'crc:new:20:1', from: { id: 123 },
-        message: { chat: { id: -100405 } }
+        message: { message_id: 9, chat: { id: -100405 } }
       }
     }] });
     if (method === 'sendMessage') return Response.json({ ok: true, result: {
@@ -535,6 +536,7 @@ test('Telegram provider receives project buttons and callback queries', async ()
     const updates = await provider.getUpdates('123:token', {});
     assert.deepEqual(requests[0]?.body.allowed_updates, ['message', 'callback_query']);
     assert.equal(updates[0]?.callbackQuery?.data, 'crc:new:20:1');
+    assert.equal(updates[0]?.callbackQuery?.messageId, 9);
     await provider.sendMessage('123:token', {
       chatId: '-100405', messageThreadId: null, text: 'Choose project',
       inlineKeyboard: [[{ text: 'Project B', callbackData: 'crc:new:20:1' }]]
@@ -544,6 +546,10 @@ test('Telegram provider receives project buttons and callback queries', async ()
     });
     await provider.answerCallbackQuery('123:token', 'callback-1', 'Chosen');
     assert.equal(requests[2]?.body.callback_query_id, 'callback-1');
+    await provider.clearInlineKeyboard('123:token', '-100405', 9);
+    assert.deepEqual(requests[3], {
+      method: 'editMessageReplyMarkup', body: { chat_id: '-100405', message_id: 9 }
+    });
   } finally {
     globalThis.fetch = originalFetch;
   }

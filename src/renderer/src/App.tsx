@@ -527,6 +527,14 @@ function RateLimitCard({
           className="rate-limit-row__fill"
           style={{ width: `${model.fillPercent ?? 0}%` }}
         />
+        {accent === 'weekly' ? Array.from({ length: 6 }, (_, index) => (
+          <span
+            key={index}
+            className="rate-limit-row__day-tick"
+            style={{ left: `${((index + 1) / 7) * 100}%` }}
+            aria-hidden="true"
+          />
+        )) : null}
         {model.reserveThresholdPercent !== null ? (
           <span
             className="rate-limit-row__marker"

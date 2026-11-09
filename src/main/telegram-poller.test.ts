@@ -37,6 +37,7 @@ function fakeSlashCommandService(
 
 class FakeTelegramPollingProvider implements TelegramBotProvider {
   async answerCallbackQuery(): Promise<void> {}
+  async clearInlineKeyboard(): Promise<void> {}
   readonly createdTopics: Array<{ chatId: string; name: string }> = [];
 
   readonly sentMessages: TelegramSendMessageInput[] = [];
@@ -133,7 +134,7 @@ test('TelegramInboundPoller routes General commands and project callbacks before
       messageThreadId: null, senderId: '12345', senderIsBot: false
     } },
     { updateId: 701, message: null, callbackQuery: {
-      id: 'callback-1', data: 'crc:new:700:0', chatId: '-1001', senderId: '12345'
+      id: 'callback-1', data: 'crc:new:700:0', chatId: '-1001', messageId: 2, senderId: '12345'
     } }
   ];
   const calls: string[] = [];
@@ -169,7 +170,7 @@ test('TelegramInboundPoller handles /release before trying to resume a locked ch
     } },
     { updateId: 703, message: null, callbackQuery: {
       id: 'release-confirm', data: 'crc:release:123456789abcdef0:b',
-      chatId: '-1001', senderId: '12345'
+      chatId: '-1001', messageId: 4, senderId: '12345'
     } }
   ];
   const calls: string[] = [];

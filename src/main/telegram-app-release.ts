@@ -12,6 +12,7 @@ interface AppControl {
 interface PendingRelease {
   chatId: string;
   messageThreadId: number | null;
+  messageId: number;
   expiresAt: number;
 }
 
@@ -23,7 +24,7 @@ export class TelegramAppReleaseCommands {
 
   constructor(
     private readonly configStore: Pick<TelegramConfigStore, 'readState'>,
-    private readonly provider: Pick<TelegramBotProvider, 'sendMessage' | 'answerCallbackQuery'>,
+    private readonly provider: Pick<TelegramBotProvider, 'sendMessage' | 'answerCallbackQuery' | 'clearInlineKeyboard'>,
     private readonly appControl: AppControl,
     private readonly now: () => number = Date.now
   ) {}
@@ -45,11 +46,6 @@ export class TelegramAppReleaseCommands {
         if (pending.expiresAt < this.now()) this.pending.delete(key);
       }
       const nonce = randomBytes(8).toString('hex');
-      this.pending.set(nonce, {
-        chatId: message.chatId,
-        messageThreadId: message.messageThreadId,
-        expiresAt: this.now() + CONFIRMATION_LIFETIME_MS
-      });
       const buttons: Array<Array<{ text: string; callbackData: string }>> = [];
       if (status.vscode) buttons.push([{ text: 'Close VS Code', callbackData: `${CALLBACK_PREFIX}${nonce}:v` }]);
       if (status.codex) buttons.push([{ text: 'Close Codex app', callbackData: `${CALLBACK_PREFIX}${nonce}:c` }]);
@@ -57,11 +53,17 @@ export class TelegramAppReleaseCommands {
         buttons.push([{ text: 'Close both', callbackData: `${CALLBACK_PREFIX}${nonce}:b` }]);
       }
       buttons.push([{ text: 'Cancel', callbackData: `${CALLBACK_PREFIX}${nonce}:x` }]);
-      await this.provider.sendMessage(config.botToken, {
+      const sent = await this.provider.sendMessage(config.botToken, {
         chatId: message.chatId,
         messageThreadId: message.messageThreadId === 1 ? null : message.messageThreadId,
         text: 'Choose which app to close. Unsaved work may prevent a normal quit; nothing will be force closed.',
         inlineKeyboard: buttons
+      });
+      this.pending.set(nonce, {
+        chatId: message.chatId,
+        messageThreadId: message.messageThreadId,
+        messageId: sent.messageId,
+        expiresAt: this.now() + CONFIRMATION_LIFETIME_MS
       });
     } catch (error) {
       await this.send(config.botToken, message.chatId, message.messageThreadId,
@@ -71,7 +73,7 @@ export class TelegramAppReleaseCommands {
   }
 
   async handleCallback(input: {
-    id: string; data: string | null; chatId: string | null; senderId: string;
+    id: string; data: string | null; chatId: string | null; messageId?: number | null; senderId: string;
   }): Promise<boolean> {
     if (!input.data?.startsWith(CALLBACK_PREFIX)) return false;
     const config = await this.configStore.readState();
@@ -82,7 +84,12 @@ export class TelegramAppReleaseCommands {
     }
     const match = /^crc:release:([0-9a-f]{16}):([vcbx])$/.exec(input.data);
     const pending = match ? this.pending.get(match[1]!) : null;
-    if (!pending || pending.chatId !== input.chatId || pending.expiresAt < this.now()) {
+    if (!pending || pending.chatId !== input.chatId ||
+      (input.messageId != null && pending.messageId !== input.messageId) ||
+      pending.expiresAt < this.now()) {
+      if (input.chatId && input.messageId != null) {
+        await this.provider.clearInlineKeyboard(config.botToken, input.chatId, input.messageId).catch(() => undefined);
+      }
       await this.provider.answerCallbackQuery(config.botToken, input.id, 'This confirmation has expired. Send /release again.');
       return true;
     }
@@ -90,9 +97,11 @@ export class TelegramAppReleaseCommands {
     const choice = match![2]!;
     if (choice === 'x') {
       await this.provider.answerCallbackQuery(config.botToken, input.id, 'Cancelled.');
+      await this.clearKeyboard(config.botToken, pending);
       return true;
     }
     await this.provider.answerCallbackQuery(config.botToken, input.id, 'Closing selected apps…');
+    const keyboardCleared = await this.clearKeyboard(config.botToken, pending);
     const targets: RemoteApp[] = choice === 'b' ? ['vscode', 'codex'] : [choice === 'v' ? 'vscode' : 'codex'];
     try {
       const result = await this.appControl.quit(targets);
@@ -103,7 +112,8 @@ export class TelegramAppReleaseCommands {
           : `${label}: still open. Check the laptop for a save dialog.`;
       });
       await this.send(config.botToken, pending.chatId, pending.messageThreadId,
-        `${lines.join('\n')}\nYou can send your prompt again after the app closes.`);
+        `${lines.join('\n')}\nYou can send your prompt again after the app closes.` +
+        (keyboardCleared ? '' : '\nThe buttons could not be hidden, but they are inactive.'));
     } catch (error) {
       await this.send(config.botToken, pending.chatId, pending.messageThreadId,
         `Could not close the selected apps: ${error instanceof Error ? error.message : String(error)}`);
@@ -115,5 +125,14 @@ export class TelegramAppReleaseCommands {
     await this.provider.sendMessage(token, {
       chatId, messageThreadId: threadId === 1 ? null : threadId, text
     });
+  }
+
+  private async clearKeyboard(token: string, pending: PendingRelease): Promise<boolean> {
+    try {
+      await this.provider.clearInlineKeyboard(token, pending.chatId, pending.messageId);
+      return true;
+    } catch {
+      return false;
+    }
   }
 }

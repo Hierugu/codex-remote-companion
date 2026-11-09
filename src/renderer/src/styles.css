@@ -1027,6 +1027,17 @@ button:not(:disabled) {
   box-shadow: 0 0 12px rgba(98, 215, 161, 0.18);
 }
 
+.rate-limit-row__day-tick {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  margin-left: -1px;
+  background: rgba(8, 24, 30, 0.55);
+  box-shadow: 1px 0 0 rgba(255, 255, 255, 0.24);
+  pointer-events: none;
+}
+
 .rate-limit-row__marker {
   position: absolute;
   top: -2px;
